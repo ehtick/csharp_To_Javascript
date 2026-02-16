@@ -109,7 +109,7 @@ namespace H5.Translator
                     }
 
                     EnsureComma();
-                    Write(JS.Funcs.GETDEFAULTVALUE + ": function () { return new " + structName + "(); }");
+                    EmitGetDefaultValueMethod();
                     Emitter.Comma = true;
                 }
             }
@@ -389,6 +389,89 @@ namespace H5.Translator
                 Emitter.MethodsGroup = null;
                 Emitter.MethodsGroupBuilder = null;
             }
+        }
+
+        protected virtual void EmitGetDefaultValueMethod()
+        {
+            Write(JS.Funcs.GETDEFAULTVALUE + ": function () ");
+            BeginBlock();
+
+            Write("var " + JS.Vars.D + " = Object.create(this.prototype);");
+            WriteNewLine();
+
+            foreach (var member in TypeInfo.InstanceConfig.Fields.Concat(TypeInfo.InstanceConfig.Properties))
+            {
+                var isProperty = member.Entity is PropertyDeclaration;
+                if (isProperty)
+                {
+                    var member_rr = Emitter.Resolver.ResolveNode(member.Entity) as MemberResolveResult;
+                    var property = (IProperty)member_rr.Member;
+                    if (!Helpers.IsAutoProperty(property))
+                    {
+                        continue;
+                    }
+                }
+
+                ResolveResult rr = null;
+                AstType astType = null;
+                if (member.VarInitializer != null)
+                {
+                    rr = Emitter.Resolver.ResolveNode(member.VarInitializer);
+                }
+                else
+                {
+                    astType = member.Entity.ReturnType;
+                    rr = Emitter.Resolver.ResolveNode(member.Entity);
+                }
+
+                var constValue = Inspector.GetDefaultFieldValue(rr.Type, astType);
+                if (rr.Type.Kind == TypeKind.Enum)
+                {
+                    constValue = Helpers.GetEnumValue(Emitter, rr.Type, constValue);
+                }
+
+                bool isNullable = NullableType.IsNullable(rr.Type);
+                string value = null;
+
+                if (constValue is AstType)
+                {
+                    value = isNullable
+                        ? "null"
+                        : Inspector.GetStructDefaultValue((AstType)constValue, Emitter);
+                }
+                else if (constValue is IType)
+                {
+                    value = isNullable
+                         ? "null"
+                         : Inspector.GetStructDefaultValue((IType)constValue, Emitter);
+                }
+                else if (constValue is RawValue)
+                {
+                    value = constValue.ToString();
+                }
+                else
+                {
+                    value = ToJavaScript(constValue, Emitter);
+                }
+
+                var name = member.GetName(Emitter);
+                bool isValidIdentifier = Helpers.IsValidIdentifier(name);
+
+                if (!isValidIdentifier)
+                {
+                    Write(string.Format("{0}[{1}] = {2};", JS.Vars.D, ToJavaScript(name, Emitter), value));
+                }
+                else
+                {
+                    Write(string.Format("{0}.{1} = {2};", JS.Vars.D, name, value));
+                }
+                WriteNewLine();
+            }
+
+            WriteReturn(true);
+            Write(JS.Vars.D);
+            WriteSemiColon();
+            EndBlock();
         }
     }
 }

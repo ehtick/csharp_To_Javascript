@@ -244,14 +244,12 @@ namespace H5.Translator
                 return string.Format("{0}()", JS.Types.System.DateTime.GET_DEFAULT_VALUE);
             }
 
-            var isGeneric = type.TypeArguments.Count > 0 && !Helpers.IsIgnoreGeneric(type, emitter);
-
             if (emitter.Validator.IsObjectLiteral(emitter.GetTypeDefinition(type)))
             {
                 return "{}";
             }
 
-            return string.Concat("new ", isGeneric ? "(" : "", H5Types.ToJsName(type, emitter), isGeneric ? ")" : "", "()");
+            return string.Concat(JS.Funcs.H5_GETDEFAULTVALUE, "(", H5Types.ToJsName(type, emitter), ")");
         }
 
         protected virtual bool IsValidStaticInitializer(Expression expr)
