@@ -32,6 +32,36 @@ public class Program
         }
 
         [TestMethod]
+        public async Task ParamsCollections2()
+        {
+            var code = """
+using System;
+using System.Collections.Generic;
+
+public class Program
+{
+    public static void Main()
+    {
+        PrintList(1, 2, 3);
+        PrintSpan(4, 5, 6);
+    }
+
+    static void PrintList(params List<int> list)
+    {
+        Console.WriteLine(list.Count);
+    }
+
+    static void PrintSpan(params ReadOnlySpan<int> span)
+    {
+        Console.WriteLine(span.Length);
+    }
+}
+""";
+            await RunTest(code);
+        }
+
+
+        [TestMethod]
         public async Task LockObject()
         {
             var code = """
