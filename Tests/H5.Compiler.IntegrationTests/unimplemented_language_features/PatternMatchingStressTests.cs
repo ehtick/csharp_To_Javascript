@@ -63,7 +63,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Fails with 'Unexpected symbol ?' likely due to issue generating type syntax for slice var")]
         public async Task ListPatternWithSliceAndVar()
         {
             var csharpCode = @"

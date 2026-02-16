@@ -371,7 +371,9 @@ namespace H5.Translator
                 return SyntaxFactory.GenericName(SyntaxFactory.Identifier(openName), SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types)));
             }
 
-            return SyntaxFactory.ParseTypeName(type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).WithoutTrivia();
+            var displayFormat = SymbolDisplayFormat.FullyQualifiedFormat
+                .WithMiscellaneousOptions(SymbolDisplayFormat.FullyQualifiedFormat.MiscellaneousOptions & ~SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+            return SyntaxFactory.ParseTypeName(type.ToDisplayString(displayFormat)).WithoutTrivia();
         }
 
         public static TypeSyntax GenerateTypeSyntax(ITypeSymbol type, SemanticModel model, int pos, SharpSixRewriter rewriter)
@@ -459,7 +461,9 @@ namespace H5.Translator
                 return SyntaxFactory.QualifiedName((NameSyntax)parent, SyntaxFactory.IdentifierName(name));
             }
 
-            return SyntaxFactory.ParseTypeName(type.ToMinimalDisplayString(model, pos));
+            var format = SymbolDisplayFormat.MinimallyQualifiedFormat
+                .WithMiscellaneousOptions(SymbolDisplayFormat.MinimallyQualifiedFormat.MiscellaneousOptions & ~SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+            return SyntaxFactory.ParseTypeName(type.ToMinimalDisplayString(model, pos, format));
         }
 
         /// <summary>
