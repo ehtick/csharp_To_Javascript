@@ -79,12 +79,6 @@ public class Program
         {
              var code = """
 using System;
-using System.Runtime.CompilerServices;
-
-namespace System.Runtime.CompilerServices
-{
-    internal static class IsExternalInit {}
-}
 
 public record Person(string Name, int Age);
 

@@ -12,8 +12,6 @@ namespace H5.Compiler.IntegrationTests.UnimplementedLanguageFeatures
             var code = """
 using System;
 
-namespace System.Runtime.CompilerServices { internal static class IsExternalInit {} }
-
 public record Node(int Value, Node Next);
 
 public class Program
