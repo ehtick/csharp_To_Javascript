@@ -1,3 +1,4 @@
+// Original: H5/H5/Attributes/NameAttribute.cs
 using System;
 
 namespace H5

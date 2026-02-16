@@ -1,3 +1,4 @@
+// Original: H5/H5/Attributes/ExternalAttribute.cs
 using System;
 
 namespace H5

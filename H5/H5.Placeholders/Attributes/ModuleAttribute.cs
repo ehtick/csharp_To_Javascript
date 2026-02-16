@@ -1,3 +1,4 @@
+// Original: H5/H5/Attributes/ModuleAttribute.cs
 using System;
 
 namespace H5

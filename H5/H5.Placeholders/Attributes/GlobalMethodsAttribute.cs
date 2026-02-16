@@ -1,3 +1,4 @@
+// Original: H5/H5/Attributes/GlobalMethodsAttribute.cs
 using System;
 
 namespace H5

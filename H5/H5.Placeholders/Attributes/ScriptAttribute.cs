@@ -1,3 +1,4 @@
+// Original: H5/H5/Attributes/ScriptAttribute.cs
 using System;
 
 namespace H5
