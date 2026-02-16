@@ -154,6 +154,16 @@ namespace H5.Translator
                         throw new TranslatorException("Top-level statements are not supported");
                     }
 
+                    if (syntaxTree.GetRoot().DescendantNodes().OfType<UsingDirectiveSyntax>().Any(u => !u.GlobalKeyword.IsKind(SyntaxKind.None)))
+                    {
+                        throw new TranslatorException("Global usings are not supported");
+                    }
+
+                    if (syntaxTree.GetRoot().DescendantNodes().OfType<AttributeSyntax>().Any(a => a.Name.ToString().Contains("AsyncMethodBuilder")))
+                    {
+                        throw new TranslatorException("AsyncMethodBuilder attribute is not supported");
+                    }
+
                     var rewriter = new StackAllocRewriter();
                     var newRoot = rewriter.Visit(syntaxTree.GetRoot());
                     if (newRoot != syntaxTree.GetRoot())
