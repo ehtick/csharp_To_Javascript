@@ -128,10 +128,11 @@ namespace H5.Translator
                         ITypeSymbol subType = null;
                         if (expressionType != null)
                         {
-                            var members = expressionType.GetMembers(sub.NameColon.Name.Identifier.ValueText);
-                            var member = members.FirstOrDefault();
-                            if (member is IPropertySymbol ps) subType = ps.Type;
-                            else if (member is IFieldSymbol fs) subType = fs.Type;
+                            var memberExpr = GetSubPatternExpression(sub);
+                            if (memberExpr != null)
+                            {
+                                subType = GetMemberType(expressionType, memberExpr);
+                            }
                         }
                         GetVariables(sub.Pattern, model, rewriter, variables, subType);
                     }
@@ -505,15 +506,13 @@ namespace H5.Translator
                 {
                     foreach (var sub in recursivePattern.PropertyPatternClause.Subpatterns)
                     {
-                        var propAccess = SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, typedExpression, sub.NameColon.Name);
+                        var memberExpr = GetSubPatternExpression(sub);
+                        var propAccess = GetMemberAccess(typedExpression, memberExpr);
 
                         ITypeSymbol subType = null;
-                        if (expressionType != null)
+                        if (expressionType != null && memberExpr != null)
                         {
-                            var members = expressionType.GetMembers(sub.NameColon.Name.Identifier.ValueText);
-                            var member = members.FirstOrDefault();
-                            if (member is IPropertySymbol ps) subType = ps.Type;
-                            else if (member is IFieldSymbol fs) subType = fs.Type;
+                            subType = GetMemberType(expressionType, memberExpr);
                         }
 
                         var subCheck = MakeCheck(propAccess, sub.Pattern, model, subType);
@@ -791,6 +790,56 @@ namespace H5.Translator
             // Fallback: Discard or Var matches everything (checked non-null by parent RecursivePattern usually, but here we assume true)
             // Or unknown pattern type
             return SyntaxFactory.LiteralExpression(SyntaxKind.TrueLiteralExpression);
+        }
+
+        private static ExpressionSyntax GetSubPatternExpression(SubpatternSyntax sub)
+        {
+            if (sub.NameColon != null)
+            {
+                return sub.NameColon.Name;
+            }
+            else if (sub.ExpressionColon != null)
+            {
+                return sub.ExpressionColon.Expression;
+            }
+            return null;
+        }
+
+        private ITypeSymbol GetMemberType(ITypeSymbol parentType, ExpressionSyntax memberExpression)
+        {
+            if (parentType == null)
+            {
+                return null;
+            }
+
+            if (memberExpression is IdentifierNameSyntax id)
+            {
+                var members = parentType.GetMembers(id.Identifier.ValueText);
+                var member = members.FirstOrDefault();
+                if (member is IPropertySymbol ps) return ps.Type;
+                if (member is IFieldSymbol fs) return fs.Type;
+            }
+            else if (memberExpression is MemberAccessExpressionSyntax memberAccess)
+            {
+                var expressionType = GetMemberType(parentType, memberAccess.Expression);
+                return GetMemberType(expressionType, memberAccess.Name);
+            }
+
+            return null;
+        }
+
+        private ExpressionSyntax GetMemberAccess(ExpressionSyntax parentExpression, ExpressionSyntax memberExpression)
+        {
+            if (memberExpression is IdentifierNameSyntax id)
+            {
+                return SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, parentExpression, id);
+            }
+            else if (memberExpression is MemberAccessExpressionSyntax memberAccess)
+            {
+                var expression = GetMemberAccess(parentExpression, memberAccess.Expression);
+                return SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, expression, memberAccess.Name);
+            }
+            return parentExpression;
         }
     }
 }
