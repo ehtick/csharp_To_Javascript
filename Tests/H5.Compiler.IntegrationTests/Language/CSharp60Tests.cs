@@ -266,7 +266,7 @@ public class Program
         Console.WriteLine("Sqrt(16): " + Sqrt(16));
         Console.WriteLine("Abs(-10): " + Abs(-10));
         Console.WriteLine("Max(5, 10): " + Max(5, 10));
-        Console.WriteLine("PI: " + Math.Round(PI, 2));
+        Console.WriteLine("PI: " + Math.Round(PI, 2)*100);
     }
 }
 """;
