@@ -149,6 +149,11 @@ namespace H5.Translator
                     var filePath   = Path.IsPathRooted(file) ? file : Path.GetFullPath((new Uri(Path.Combine(baseDir, file))).LocalPath);
                     var syntaxTree = SyntaxFactory.ParseSyntaxTree(File.ReadAllText(filePath), new CSharpParseOptions(languageVersion, Microsoft.CodeAnalysis.DocumentationMode.Parse, SourceCodeKind.Regular, DefineConstants), filePath, Encoding.Default);
 
+                    if (syntaxTree.GetRoot().DescendantNodes().OfType<GlobalStatementSyntax>().Any())
+                    {
+                        throw new TranslatorException("Top-level statements are not supported");
+                    }
+
                     var rewriter = new StackAllocRewriter();
                     var newRoot = rewriter.Visit(syntaxTree.GetRoot());
                     if (newRoot != syntaxTree.GetRoot())
