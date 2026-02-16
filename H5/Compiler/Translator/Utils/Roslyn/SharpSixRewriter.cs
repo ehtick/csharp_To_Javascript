@@ -3808,6 +3808,155 @@ namespace H5.Translator
             return newNode.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
         }
 
+        public override SyntaxNode VisitCollectionExpression(CollectionExpressionSyntax node)
+        {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitCollectionExpression(node);
+            }
+
+            var typeInfo = semanticModel.GetTypeInfo(node);
+            var targetType = typeInfo.ConvertedType;
+
+            if (targetType == null || targetType.TypeKind == TypeKind.Error)
+            {
+                return base.VisitCollectionExpression(node);
+            }
+
+            // Check for spread elements
+            if (node.Elements.Any(e => e is SpreadElementSyntax))
+            {
+                 var mapped = semanticModel.SyntaxTree.GetLineSpan(node.Span);
+                 throw new NotSupportedException(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Spread elements in collection expressions are not supported yet", semanticModel.SyntaxTree.FilePath, node.ToString()));
+            }
+
+            var visitedElements = new List<SyntaxNodeOrToken>();
+            for (int i = 0; i < node.Elements.Count; i++)
+            {
+                var element = node.Elements[i];
+                if (element is ExpressionElementSyntax expr)
+                {
+                    visitedElements.Add((ExpressionSyntax)Visit(expr.Expression));
+                    if (i < node.Elements.Count - 1)
+                    {
+                        visitedElements.Add(SyntaxFactory.Token(SyntaxKind.CommaToken).WithTrailingTrivia(SyntaxFactory.Space));
+                    }
+                }
+            }
+
+            var initializer = SyntaxFactory.InitializerExpression(
+                SyntaxKind.ArrayInitializerExpression,
+                SyntaxFactory.SeparatedList<ExpressionSyntax>(visitedElements));
+
+            // Determine concrete type to instantiate
+            // 1. Array
+            if (targetType is IArrayTypeSymbol arrayType)
+            {
+                var elementTypeSyntax = SyntaxHelper.GenerateTypeSyntax(arrayType.ElementType, semanticModel, node.SpanStart, this);
+                var newArray = SyntaxFactory.ArrayCreationExpression(
+                    SyntaxFactory.ArrayType(elementTypeSyntax)
+                        .WithRankSpecifiers(SyntaxFactory.SingletonList(SyntaxFactory.ArrayRankSpecifier(SyntaxFactory.SingletonSeparatedList<ExpressionSyntax>(SyntaxFactory.OmittedArraySizeExpression())))))
+                    .WithInitializer(initializer)
+                    .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space));
+
+                return newArray.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+            }
+
+            // 2. Named Type (List, Span, IEnumerable, etc.)
+            if (targetType is INamedTypeSymbol namedType)
+            {
+                // Check if it's Span/ReadOnlySpan -> Array
+                 if ((namedType.Name == "Span" || namedType.Name == "ReadOnlySpan") &&
+                    namedType.ContainingNamespace?.ToDisplayString() == "System" && namedType.TypeArguments.Length == 1)
+                {
+                    var elementTypeSyntax = SyntaxHelper.GenerateTypeSyntax(namedType.TypeArguments[0], semanticModel, node.SpanStart, this);
+                    var newArray = SyntaxFactory.ArrayCreationExpression(
+                        SyntaxFactory.ArrayType(elementTypeSyntax)
+                            .WithRankSpecifiers(SyntaxFactory.SingletonList(SyntaxFactory.ArrayRankSpecifier(SyntaxFactory.SingletonSeparatedList<ExpressionSyntax>(SyntaxFactory.OmittedArraySizeExpression())))))
+                        .WithInitializer(initializer)
+                        .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space));
+
+                    return newArray.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+                }
+
+                // Check for List<T> or interfaces implemented by List<T> or T[]
+                bool useList = false;
+                bool useArray = false;
+
+                var specialType = namedType.OriginalDefinition.SpecialType;
+                if (specialType == SpecialType.System_Collections_Generic_IEnumerable_T ||
+                    specialType == SpecialType.System_Collections_Generic_IReadOnlyList_T ||
+                    specialType == SpecialType.System_Collections_Generic_IReadOnlyCollection_T)
+                {
+                    useArray = true;
+                }
+                else if (specialType == SpecialType.System_Collections_Generic_IList_T ||
+                         specialType == SpecialType.System_Collections_Generic_ICollection_T ||
+                         (namedType.Name == "List" && namedType.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic"))
+                {
+                    useList = true;
+                }
+
+                if (useArray)
+                {
+                     var elementTypeSyntax = SyntaxHelper.GenerateTypeSyntax(namedType.TypeArguments[0], semanticModel, node.SpanStart, this);
+                    var newArray = SyntaxFactory.ArrayCreationExpression(
+                        SyntaxFactory.ArrayType(elementTypeSyntax)
+                            .WithRankSpecifiers(SyntaxFactory.SingletonList(SyntaxFactory.ArrayRankSpecifier(SyntaxFactory.SingletonSeparatedList<ExpressionSyntax>(SyntaxFactory.OmittedArraySizeExpression())))))
+                        .WithInitializer(initializer)
+                        .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space));
+
+                    return newArray.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+                }
+
+                if (useList)
+                {
+                    TypeSyntax typeSyntax;
+                    if (namedType.TypeKind == TypeKind.Interface)
+                    {
+                         var elementType = namedType.TypeArguments[0];
+                         var elementTypeSyntax = SyntaxHelper.GenerateTypeSyntax(elementType, semanticModel, node.SpanStart, this);
+
+                         typeSyntax = SyntaxFactory.QualifiedName(
+                            SyntaxFactory.ParseName("System.Collections.Generic"),
+                            SyntaxFactory.GenericName(
+                                SyntaxFactory.Identifier("List"),
+                                SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(elementTypeSyntax))));
+                    }
+                    else
+                    {
+                        typeSyntax = SyntaxHelper.GenerateTypeSyntax(namedType, semanticModel, node.SpanStart, this);
+                    }
+
+                     var collectionInitializer = SyntaxFactory.InitializerExpression(
+                        SyntaxKind.CollectionInitializerExpression,
+                        SyntaxFactory.SeparatedList<ExpressionSyntax>(visitedElements));
+
+                    var newList = SyntaxFactory.ObjectCreationExpression(typeSyntax)
+                        .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                        .WithArgumentList(SyntaxFactory.ArgumentList())
+                        .WithInitializer(collectionInitializer);
+
+                    return newList.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+                }
+
+                // Fallback: Try `new Type { elements }`
+                var fallbackTypeSyntax = SyntaxHelper.GenerateTypeSyntax(namedType, semanticModel, node.SpanStart, this);
+                 var fallbackInitializer = SyntaxFactory.InitializerExpression(
+                        SyntaxKind.CollectionInitializerExpression,
+                        SyntaxFactory.SeparatedList<ExpressionSyntax>(visitedElements));
+
+                 var fallbackObj = SyntaxFactory.ObjectCreationExpression(fallbackTypeSyntax)
+                        .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                        .WithArgumentList(SyntaxFactory.ArgumentList())
+                        .WithInitializer(fallbackInitializer);
+
+                 return fallbackObj.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+            }
+
+            return base.VisitCollectionExpression(node);
+        }
+
         private ArgumentListSyntax ProcessCallerArgumentExpression(ArgumentListSyntax argumentList, SyntaxNode originalNode, IMethodSymbol method, SemanticModel semanticModel)
         {
             if (method == null || argumentList == null)

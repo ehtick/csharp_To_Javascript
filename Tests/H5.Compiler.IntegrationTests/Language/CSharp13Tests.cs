@@ -24,8 +24,7 @@ public class Program
 
     public static void Print(params IEnumerable<int> numbers)
     {
-        foreach (var n in numbers) Console.Write(n + " ");
-        Console.WriteLine();
+        Console.WriteLine(string.Join(" ", numbers));
     }
 }
 """;
