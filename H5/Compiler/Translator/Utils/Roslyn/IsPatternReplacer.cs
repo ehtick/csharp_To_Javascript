@@ -397,7 +397,7 @@ namespace H5.Translator
                                         SyntaxFactory.InvocationExpression(
                                             SyntaxFactory.MemberAccessExpression(
                                                 SyntaxKind.SimpleMemberAccessExpression,
-                                                SyntaxFactory.IdentifierName("H5.Script"),
+                                                SyntaxFactory.ParseName("global::H5.Script"),
                                                 SyntaxFactory.GenericName(
                                                     SyntaxFactory.Identifier("Write"))
                                                 .WithTypeArgumentList(
@@ -427,16 +427,16 @@ namespace H5.Translator
                         // Handle Constant Pattern (Top-level optimization/legacy handling)
                         else if (pattern.Pattern is ConstantPatternSyntax cps)
                         {
-                             updatedPatterns[pattern] = MakeCheck(pattern.Expression, pattern.Pattern, model, null).NormalizeWhitespace();
+                             updatedPatterns[pattern] = SyntaxFactory.ParenthesizedExpression(MakeCheck(pattern.Expression, pattern.Pattern, model, null)).NormalizeWhitespace();
                         }
                         // Handle Recursive Pattern
                         else if (pattern.Pattern is RecursivePatternSyntax recursivePattern)
                         {
-                            updatedPatterns[pattern] = MakeCheck(pattern.Expression, recursivePattern, model, null).NormalizeWhitespace();
+                            updatedPatterns[pattern] = SyntaxFactory.ParenthesizedExpression(MakeCheck(pattern.Expression, recursivePattern, model, null)).NormalizeWhitespace();
                         }
                         else
                         {
-                             updatedPatterns[pattern] = MakeCheck(pattern.Expression, pattern.Pattern, model, null).NormalizeWhitespace();
+                             updatedPatterns[pattern] = SyntaxFactory.ParenthesizedExpression(MakeCheck(pattern.Expression, pattern.Pattern, model, null)).NormalizeWhitespace();
                         }
                     }
                 }
@@ -517,7 +517,7 @@ namespace H5.Translator
                         }
 
                         var subCheck = MakeCheck(propAccess, sub.Pattern, model, subType);
-                        condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, subCheck);
+                        condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, SyntaxFactory.ParenthesizedExpression(subCheck));
                     }
                 }
 
@@ -549,7 +549,7 @@ namespace H5.Translator
                             }
 
                             var subCheck = MakeCheck(memberAccess, subPattern.Pattern, model, subType);
-                            condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, subCheck);
+                            condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, SyntaxFactory.ParenthesizedExpression(subCheck));
                             index++;
                         }
                     }
@@ -566,7 +566,7 @@ namespace H5.Translator
                             );
 
                             var subCheck = MakeCheck(memberAccess, subPattern.Pattern, model, null);
-                            condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, subCheck);
+                            condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, SyntaxFactory.ParenthesizedExpression(subCheck));
                             index++;
                         }
                     }
@@ -584,7 +584,7 @@ namespace H5.Translator
                     var castExpr = SyntaxFactory.CastExpression(declPattern.Type, expression);
 
                     var assignmentHelper = SyntaxFactory.InvocationExpression(
-                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("H5.Script"), SyntaxFactory.GenericName("Write").AddTypeArgumentListArguments(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword)))),
+                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ParseName("global::H5.Script"), SyntaxFactory.GenericName("Write").AddTypeArgumentListArguments(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword)))),
                         SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(new[] {
                             SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal("({0} = {1}, true)"))),
                             SyntaxFactory.Argument(varName),
@@ -604,7 +604,7 @@ namespace H5.Translator
                     var varName = SyntaxFactory.IdentifierName(designation.Identifier.ValueText);
 
                     var assignmentHelper = SyntaxFactory.InvocationExpression(
-                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("H5.Script"), SyntaxFactory.GenericName("Write").AddTypeArgumentListArguments(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword)))),
+                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ParseName("global::H5.Script"), SyntaxFactory.GenericName("Write").AddTypeArgumentListArguments(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword)))),
                         SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(new[] {
                             SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal("({0} = {1}, true)"))),
                             SyntaxFactory.Argument(varName),
@@ -691,12 +691,12 @@ namespace H5.Translator
 
                                 var getSubArray = SyntaxFactory.InvocationExpression(
                                     SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression,
-                                        SyntaxFactory.IdentifierName("H5.Script"),
+                                        SyntaxFactory.ParseName("global::H5.Script"),
                                         SyntaxFactory.GenericName("Write").AddTypeArgumentListArguments(SyntaxFactory.ParseTypeName("dynamic"))))
                                     .WithArgumentList(SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(args)));
 
                                 var subCheck = MakeCheck(getSubArray, slice.Pattern, model, expressionType);
-                                condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, subCheck);
+                                condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, SyntaxFactory.ParenthesizedExpression(subCheck));
                             }
                         }
                     }
@@ -722,7 +722,7 @@ namespace H5.Translator
                         }
 
                         var elementCheck = MakeCheck(elementAccess, p, model, elementType);
-                        condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, elementCheck);
+                        condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, SyntaxFactory.ParenthesizedExpression(elementCheck));
                     }
                 }
 
