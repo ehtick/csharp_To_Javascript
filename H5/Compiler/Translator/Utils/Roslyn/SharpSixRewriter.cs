@@ -2171,6 +2171,38 @@ namespace H5.Translator
 
         public override SyntaxNode VisitPropertyDeclaration(PropertyDeclarationSyntax node)
         {
+            if (node.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword)))
+            {
+                var isDefining = true;
+
+                if (node.ExpressionBody != null)
+                {
+                    isDefining = false;
+                }
+                else if (node.AccessorList != null)
+                {
+                    foreach (var accessor in node.AccessorList.Accessors)
+                    {
+                        if (accessor.Body != null || accessor.ExpressionBody != null)
+                        {
+                            isDefining = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (isDefining)
+                {
+                    return null;
+                }
+
+                var idx = node.Modifiers.IndexOf(SyntaxKind.PartialKeyword);
+                if (idx > -1)
+                {
+                    node = node.WithModifiers(node.Modifiers.RemoveAt(idx));
+                }
+            }
+
             node = (PropertyDeclarationSyntax)base.VisitPropertyDeclaration(node);
             var newNode = node;
 
