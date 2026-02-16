@@ -443,11 +443,65 @@ namespace H5.Translator
             return node;
         }
 
+        public override SyntaxNode VisitCastExpression(CastExpressionSyntax node)
+        {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitCastExpression(node);
+            }
+
+            var methodSymbol = semanticModel.GetSymbolInfo(node).Symbol as IMethodSymbol;
+
+            if (methodSymbol != null && (methodSymbol.MethodKind == MethodKind.Conversion) && methodSymbol.Name.StartsWith("op_Checked"))
+            {
+                var expression = (ExpressionSyntax)Visit(node.Expression);
+
+                var typeSyntax = SyntaxHelper.GenerateTypeSyntax(methodSymbol.ContainingType, semanticModel, node.SpanStart, this);
+
+                var memberAccess = SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    typeSyntax,
+                    SyntaxFactory.IdentifierName(methodSymbol.Name));
+
+                return SyntaxFactory.InvocationExpression(memberAccess,
+                    SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(
+                        SyntaxFactory.Argument(expression)
+                    )))
+                    .WithLeadingTrivia(node.GetLeadingTrivia())
+                    .WithTrailingTrivia(node.GetTrailingTrivia());
+            }
+
+            return base.VisitCastExpression(node);
+        }
+
         public override SyntaxNode VisitBinaryExpression(BinaryExpressionSyntax node)
         {
             if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
             {
                 return base.VisitBinaryExpression(node);
+            }
+
+            var methodSymbol = semanticModel.GetSymbolInfo(node).Symbol as IMethodSymbol;
+
+            if (methodSymbol != null && methodSymbol.MethodKind == MethodKind.UserDefinedOperator && methodSymbol.Name.StartsWith("op_Checked"))
+            {
+                var left = (ExpressionSyntax)Visit(node.Left);
+                var right = (ExpressionSyntax)Visit(node.Right);
+
+                var typeSyntax = SyntaxHelper.GenerateTypeSyntax(methodSymbol.ContainingType, semanticModel, node.SpanStart, this);
+
+                var memberAccess = SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    typeSyntax,
+                    SyntaxFactory.IdentifierName(methodSymbol.Name));
+
+                return SyntaxFactory.InvocationExpression(memberAccess,
+                    SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(new[] {
+                        SyntaxFactory.Argument(left),
+                        SyntaxFactory.Argument(right)
+                    })))
+                    .WithLeadingTrivia(node.GetLeadingTrivia())
+                    .WithTrailingTrivia(node.GetTrailingTrivia());
             }
 
             var symbol = semanticModel.GetSymbolInfo(node.Right).Symbol;
@@ -1178,6 +1232,32 @@ namespace H5.Translator
             if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
             {
                 return base.VisitPrefixUnaryExpression(node);
+            }
+
+            var methodSymbol = semanticModel.GetSymbolInfo(node).Symbol as IMethodSymbol;
+
+            if (methodSymbol != null && methodSymbol.MethodKind == MethodKind.UserDefinedOperator && methodSymbol.Name.StartsWith("op_Checked"))
+            {
+                if (methodSymbol.Name == "op_CheckedIncrement" || methodSymbol.Name == "op_CheckedDecrement")
+                {
+                    throw new NotSupportedException("Checked increment/decrement operators are not supported.");
+                }
+
+                var operand = (ExpressionSyntax)Visit(node.Operand);
+
+                var typeSyntax = SyntaxHelper.GenerateTypeSyntax(methodSymbol.ContainingType, semanticModel, node.SpanStart, this);
+
+                var memberAccess = SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    typeSyntax,
+                    SyntaxFactory.IdentifierName(methodSymbol.Name));
+
+                return SyntaxFactory.InvocationExpression(memberAccess,
+                    SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(
+                        SyntaxFactory.Argument(operand)
+                    )))
+                    .WithLeadingTrivia(node.GetLeadingTrivia())
+                    .WithTrailingTrivia(node.GetTrailingTrivia());
             }
 
             if (node.IsKind(SyntaxKind.IndexExpression)) // ^ expression
@@ -3617,7 +3697,30 @@ namespace H5.Translator
 
         public override SyntaxNode VisitOperatorDeclaration(OperatorDeclarationSyntax node)
         {
+            var originalNode = node;
             node = (OperatorDeclarationSyntax)base.VisitOperatorDeclaration(node);
+
+            if (originalNode.CheckedKeyword.IsKind(SyntaxKind.CheckedKeyword))
+            {
+                var methodName = GetCheckedOperatorName(node.OperatorToken, node.ParameterList.Parameters.Count);
+                var method = SyntaxFactory.MethodDeclaration(
+                    node.ReturnType,
+                    methodName)
+                    .WithModifiers(node.Modifiers)
+                    .WithParameterList(node.ParameterList)
+                    .WithBody(node.Body)
+                    .WithExpressionBody(node.ExpressionBody)
+                    .WithAttributeLists(node.AttributeLists)
+                    .WithTypeParameterList(null)
+                    .WithConstraintClauses(default);
+
+                if (method.ExpressionBody != null)
+                {
+                    return SyntaxHelper.ToStatementBody(method);
+                }
+                return method;
+            }
+
             if (node.ExpressionBody != null)
             {
                 return SyntaxHelper.ToStatementBody(node);
@@ -3628,13 +3731,50 @@ namespace H5.Translator
 
         public override SyntaxNode VisitConversionOperatorDeclaration(ConversionOperatorDeclarationSyntax node)
         {
+            var originalNode = node;
             node = (ConversionOperatorDeclarationSyntax)base.VisitConversionOperatorDeclaration(node);
+
+            if (originalNode.CheckedKeyword.IsKind(SyntaxKind.CheckedKeyword))
+            {
+                var methodName = "op_CheckedExplicit";
+                var method = SyntaxFactory.MethodDeclaration(
+                    node.Type,
+                    methodName)
+                    .WithModifiers(node.Modifiers)
+                    .WithParameterList(node.ParameterList)
+                    .WithBody(node.Body)
+                    .WithExpressionBody(node.ExpressionBody)
+                    .WithAttributeLists(node.AttributeLists)
+                    .WithTypeParameterList(null)
+                    .WithConstraintClauses(default);
+
+                if (method.ExpressionBody != null)
+                {
+                    return SyntaxHelper.ToStatementBody(method);
+                }
+                return method;
+            }
+
             if (node.ExpressionBody != null)
             {
                 return SyntaxHelper.ToStatementBody(node);
             }
 
             return node;
+        }
+
+        private string GetCheckedOperatorName(SyntaxToken operatorToken, int parameterCount)
+        {
+            switch (operatorToken.Kind())
+            {
+                case SyntaxKind.PlusToken: return "op_CheckedAddition";
+                case SyntaxKind.MinusToken: return parameterCount == 2 ? "op_CheckedSubtraction" : "op_CheckedUnaryNegation";
+                case SyntaxKind.AsteriskToken: return "op_CheckedMultiply";
+                case SyntaxKind.SlashToken: return "op_CheckedDivision";
+                // case SyntaxKind.PlusPlusToken: return "op_CheckedIncrement";
+                // case SyntaxKind.MinusMinusToken: return "op_CheckedDecrement";
+                default: throw new NotSupportedException("Checked operator not supported: " + operatorToken.Text);
+            }
         }
 
         public override SyntaxNode VisitIndexerDeclaration(IndexerDeclarationSyntax node)
