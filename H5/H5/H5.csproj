@@ -37,8 +37,4 @@
     <Compile Remove="shared\System\Reflection\MethodInfo.cs" />
     <Compile Remove="shared\System\Resources\RuntimeResourceSet.cs" />
   </ItemGroup>
-  
-  <ItemGroup>
-    <Folder Include="System\Runtime\CompilerServices\" />
-  </ItemGroup>
 </Project>
