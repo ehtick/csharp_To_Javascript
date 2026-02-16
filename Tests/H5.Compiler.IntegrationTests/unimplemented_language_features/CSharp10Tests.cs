@@ -233,7 +233,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task GlobalUsings()
         {
             var code = """
@@ -248,11 +247,10 @@ public class Program
     }
 }
 """;
-            await RunTest(code);
+            await RunTestExpectingError(code, "Global usings are not supported");
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task AsyncMethodBuilderAttribute()
         {
             var code = """
@@ -294,7 +292,7 @@ public class Program
     }
 }
 """;
-            await RunTest(code);
+            await RunTestExpectingError(code, "AsyncMethodBuilder attribute is not supported");
         }
     }
 }
