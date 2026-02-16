@@ -44,6 +44,29 @@ namespace H5.Translator
             }).FirstOrDefault();
         }
 
+        private static SyntaxNode UpdateBlock(SyntaxNode b1, SyntaxNode b2, List<StatementSyntax> newStatements)
+        {
+            var originalStatements = b1 is BlockSyntax block1 ? block1.Statements : ((SwitchSectionSyntax)b1).Statements;
+            var rewrittenStatements = b2 is BlockSyntax block2 ? block2.Statements : ((SwitchSectionSyntax)b2).Statements;
+
+            if (originalStatements.Count != rewrittenStatements.Count)
+            {
+                // This shouldn't happen if b2 is just b1 with descendants replaced.
+                // But just in case, return the new statements as is (losing descendant changes, but avoiding crash/misalignment)
+                return b2 is BlockSyntax ? (SyntaxNode)((BlockSyntax)b2).WithStatements(SyntaxFactory.List(newStatements)) : ((SwitchSectionSyntax)b2).WithStatements(SyntaxFactory.List(newStatements));
+            }
+
+            var map = new Dictionary<StatementSyntax, StatementSyntax>();
+            for (int i = 0; i < originalStatements.Count; i++)
+            {
+                map[originalStatements[i]] = rewrittenStatements[i];
+            }
+
+            var finalStatements = newStatements.Select(s => map.ContainsKey(s) ? map[s] : s);
+
+            return b2 is BlockSyntax ? (SyntaxNode)((BlockSyntax)b2).WithStatements(SyntaxFactory.List(finalStatements)) : ((SwitchSectionSyntax)b2).WithStatements(SyntaxFactory.List(finalStatements));
+        }
+
         public SyntaxNode Replace(SyntaxNode root, SemanticModel model, SharpSixRewriter rewriter)
         {
             // Sort by depth descending (innermost first) to handle nesting,
@@ -333,10 +356,7 @@ namespace H5.Translator
                 {
                     var members = updatedClasses[t1].ToArray();
 
-                    t1 = t1.ReplaceNodes(updatedBlocks.Keys, (b1, b2) => {
-                        SyntaxNode result = b1 is SwitchSectionSyntax sss ? sss.WithStatements(SyntaxFactory.List(updatedBlocks[b1])) : (SyntaxNode)(((BlockSyntax)b1).WithStatements(SyntaxFactory.List(updatedBlocks[b1])));
-                        return result;
-                    });
+                    t1 = t1.ReplaceNodes(updatedBlocks.Keys, (b1, b2) => UpdateBlock(b1, b2, updatedBlocks[b1]));
 
                     if (t1 is ClassDeclarationSyntax cls)
                     {
@@ -353,11 +373,7 @@ namespace H5.Translator
             }
             else if (updatedBlocks.Count > 0)
             {
-                root = root.ReplaceNodes(updatedBlocks.Keys, (b1, b2) =>
-                {
-                    SyntaxNode result = b2 is SwitchSectionSyntax sss ? sss.WithStatements(SyntaxFactory.List(updatedBlocks[b1])) : (SyntaxNode)(((BlockSyntax)b2).WithStatements(SyntaxFactory.List(updatedBlocks[b1])));
-                    return result;
-                });
+                root = root.ReplaceNodes(updatedBlocks.Keys, (b1, b2) => UpdateBlock(b1, b2, updatedBlocks[b1]));
             }
 
             root = root.RemoveNodes(root.DescendantNodes().OfType<LocalFunctionStatementSyntax>(), SyntaxRemoveOptions.KeepTrailingTrivia | SyntaxRemoveOptions.KeepLeadingTrivia);

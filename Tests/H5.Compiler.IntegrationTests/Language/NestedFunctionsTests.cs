@@ -383,7 +383,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Fails due to H5 compiler bug with synchronous local functions inside async lambdas when outer local functions exist.")]
         public async Task ComplexNestingAndHoisting()
         {
             var code = """
@@ -495,7 +494,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Fails due to H5 compiler bug with synchronous local functions inside async lambdas when outer local functions exist.")]
         public async Task SyncLocalFunctionInsideAsyncLambda_WithOuterLocalFunction()
         {
             var code = """
