@@ -34,18 +34,19 @@ public class Program
         // Note: C# 'with' expression performs a shallow copy.
         // For structs (value types), fields are copied by value.
         // For classes (reference types), references are copied.
-        // In H5, record structs are compiled as classes (reference types).
+        // In H5, record structs are compiled as reference types (classes).
         // Therefore, l2.End and l1.End share the same reference to the Point object.
-        // Mutating l2.End will affect l1.End in H5, unlike C#.
-        // We verify basic cloning works, but do not assert value semantics for nested structs
-        // to avoid failing on known H5 limitation.
+        // Mutating l2.End will affect l1.End in H5, unlike C# (where Point is value type).
+        // The following code demonstrates this limitation (commented out to avoid failure).
 
         /*
         var end = l2.End;
         end.X = 99;
+        // In C#, assigning to l2.End (property returning value copy) requires reassignment if immutable,
+        // or modifying returned copy if mutable. But 'end' variable holds a COPY in C#.
+        // In H5, 'end' holds REFERENCE.
         l2.End = end;
-        Console.WriteLine($"l1.End.X: {l1.End.X}");
-        Console.WriteLine($"l2.End.X: {l2.End.X}");
+        Console.WriteLine($"l1.End.X: {l1.End.X}"); // C#: 2, H5: 99
         */
     }
 }
@@ -68,14 +69,11 @@ public class Program
         var p = new Point(1, 2);
         // Default ToString for record struct prints members
         // H5 currently lacks synthesized ToString for records, so it prints type name
-        // We expect H5 output to differ from Roslyn unless we implement ToString synthesis.
+        // We verify it runs without error.
         Console.WriteLine(p.ToString());
     }
 }
 """;
-            // ToString is not implemented, so this will fail output match if we enforce strictness.
-            // But we want to ensure it runs.
-            // We can skip Roslyn check for this specific test if we only want to verify it doesn't crash.
             await RunTest(code, skipRoslyn: true);
         }
     }

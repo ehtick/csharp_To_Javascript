@@ -2259,8 +2259,20 @@ namespace H5.Translator
                 closeBrace = SyntaxFactory.Token(SyntaxKind.CloseBraceToken).WithLeadingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed);
             }
 
-            var classDecl = SyntaxFactory.ClassDeclaration(node.Identifier)
-                .WithKeyword(SyntaxFactory.Token(SyntaxKind.ClassKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+            TypeDeclarationSyntax classDecl;
+
+            if (node.Kind() == SyntaxKind.RecordStructDeclaration || node.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword))
+            {
+                classDecl = SyntaxFactory.StructDeclaration(node.Identifier)
+                    .WithKeyword(SyntaxFactory.Token(SyntaxKind.StructKeyword).WithTrailingTrivia(SyntaxFactory.Space));
+            }
+            else
+            {
+                classDecl = SyntaxFactory.ClassDeclaration(node.Identifier)
+                    .WithKeyword(SyntaxFactory.Token(SyntaxKind.ClassKeyword).WithTrailingTrivia(SyntaxFactory.Space));
+            }
+
+            classDecl = classDecl
                 .WithModifiers(node.Modifiers)
                 .WithTypeParameterList(node.TypeParameterList)
                 .WithBaseList(node.BaseList)
@@ -2403,7 +2415,15 @@ namespace H5.Translator
             var old = fields;
             fields = new List<MemberDeclarationSyntax>();
 
-            var c = base.VisitClassDeclaration(classDecl) as ClassDeclarationSyntax;
+            TypeDeclarationSyntax c;
+            if (classDecl is StructDeclarationSyntax structDecl)
+            {
+                c = base.VisitStructDeclaration(structDecl) as StructDeclarationSyntax;
+            }
+            else
+            {
+                c = base.VisitClassDeclaration((ClassDeclarationSyntax)classDecl) as ClassDeclarationSyntax;
+            }
 
             if (c != null && fields.Count > 0)
             {
