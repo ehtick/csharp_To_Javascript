@@ -15,79 +15,189 @@ namespace H5.Translator
 
         public SyntaxNode Replace(SyntaxNode root, SemanticModel model, SharpSixRewriter rewriter)
         {
-            root = InsertVariables(root, model);
+            var oldRoot = root;
+            root = InsertVariables(root, model, rewriter);
+
+            if (root != oldRoot)
+            {
+                var syntaxTree = root.SyntaxTree ?? SyntaxFactory.SyntaxTree(root, model.SyntaxTree.Options as CSharpParseOptions);
+                var compilation = model.Compilation.ReplaceSyntaxTree(model.SyntaxTree, syntaxTree);
+                model = compilation.GetSemanticModel(syntaxTree);
+            }
+
             return ReplacePatterns(root, model);
         }
 
-        private void GetVariables(PatternSyntax pattern, SemanticModel model, List<(SingleVariableDesignationSyntax Designation, TypeSyntax Type, bool IsValueType)> variables)
+        private void GetVariables(PatternSyntax pattern, SemanticModel model, SharpSixRewriter rewriter, List<(SingleVariableDesignationSyntax Designation, TypeSyntax Type, bool IsValueType)> variables, ITypeSymbol expressionType)
         {
             if (pattern is DeclarationPatternSyntax decl)
             {
                 if (decl.Designation is SingleVariableDesignationSyntax single)
                 {
-                    var type = decl.Type;
-                    var typeInfo = model.GetTypeInfo(type);
-                    bool isValueType = typeInfo.Type?.IsValueType ?? false;
-                    variables.Add((single, type, isValueType));
+                    TypeSyntax typeSyntax = null;
+                    bool isValueType = false;
+
+                    var symbol = model.GetDeclaredSymbol(single) as ILocalSymbol;
+                    if (symbol != null)
+                    {
+                        typeSyntax = SyntaxHelper.GenerateTypeSyntax(symbol.Type, model, single.SpanStart, rewriter);
+                        isValueType = symbol.Type.IsValueType;
+                    }
+
+                    if (typeSyntax == null || typeSyntax.IsMissing)
+                    {
+                        if ((decl.Type.IsVar || decl.Type.ToString() == "var") && expressionType != null)
+                        {
+                            typeSyntax = SyntaxHelper.GenerateTypeSyntax(expressionType, model, decl.SpanStart, rewriter);
+                            isValueType = expressionType.IsValueType;
+                        }
+                        else if (!decl.Type.IsVar && decl.Type.ToString() != "var")
+                        {
+                            var typeInfo = model.GetTypeInfo(decl.Type);
+                            typeSyntax = decl.Type;
+                            isValueType = typeInfo.Type?.IsValueType ?? false;
+                        }
+                    }
+
+                    if (typeSyntax == null || typeSyntax.IsMissing || typeSyntax.ToString() == "var" || typeSyntax.ToString() == "?")
+                    {
+                         // Fallback to dynamic if type is unknown or 'var' (which is invalid without initializer)
+                         typeSyntax = SyntaxFactory.ParseTypeName("dynamic");
+                         isValueType = false;
+                    }
+
+                    variables.Add((single, typeSyntax, isValueType));
                 }
             }
             else if (pattern is VarPatternSyntax varPattern)
             {
                 if (varPattern.Designation is SingleVariableDesignationSyntax single)
                 {
+                    TypeSyntax typeSyntax = null;
+                    bool isValueType = false;
+
                     var symbol = model.GetDeclaredSymbol(single) as ILocalSymbol;
                     if (symbol != null)
                     {
-                        var typeSyntax = SyntaxFactory.ParseTypeName(symbol.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-                        bool isValueType = symbol.Type.IsValueType;
-                        variables.Add((single, typeSyntax, isValueType));
+                        typeSyntax = SyntaxHelper.GenerateTypeSyntax(symbol.Type, model, single.SpanStart, rewriter);
+                        isValueType = symbol.Type.IsValueType;
                     }
+
+                    if ((typeSyntax == null || typeSyntax.IsMissing) && expressionType != null)
+                    {
+                        typeSyntax = SyntaxHelper.GenerateTypeSyntax(expressionType, model, varPattern.SpanStart, rewriter);
+                        isValueType = expressionType.IsValueType;
+                    }
+
+                    if (typeSyntax == null || typeSyntax.IsMissing || typeSyntax.ToString() == "var" || typeSyntax.ToString() == "?")
+                    {
+                         typeSyntax = SyntaxFactory.ParseTypeName("dynamic");
+                         isValueType = false;
+                    }
+
+                    variables.Add((single, typeSyntax, isValueType));
                 }
             }
             else if (pattern is RecursivePatternSyntax recursive)
             {
+                if (recursive.Type != null)
+                {
+                    var ti = model.GetTypeInfo(recursive.Type);
+                    if (ti.Type != null)
+                    {
+                        expressionType = ti.Type;
+                    }
+                }
+
                 if (recursive.PropertyPatternClause != null)
                 {
                     foreach (var sub in recursive.PropertyPatternClause.Subpatterns)
                     {
-                        GetVariables(sub.Pattern, model, variables);
+                        ITypeSymbol subType = null;
+                        if (expressionType != null)
+                        {
+                            var members = expressionType.GetMembers(sub.NameColon.Name.Identifier.ValueText);
+                            var member = members.FirstOrDefault();
+                            if (member is IPropertySymbol ps) subType = ps.Type;
+                            else if (member is IFieldSymbol fs) subType = fs.Type;
+                        }
+                        GetVariables(sub.Pattern, model, rewriter, variables, subType);
                     }
                 }
                 if (recursive.PositionalPatternClause != null)
                 {
-                    foreach (var sub in recursive.PositionalPatternClause.Subpatterns)
+                    var type = expressionType;
+                    if (type != null && (type.IsTupleType || type.Name == "ValueTuple" || type.Name == "System.ValueTuple"))
                     {
-                        GetVariables(sub.Pattern, model, variables);
+                        int index = 0;
+                        foreach (var sub in recursive.PositionalPatternClause.Subpatterns)
+                        {
+                            ITypeSymbol subType = null;
+                            if (type is INamedTypeSymbol nts && nts.IsTupleType && index < nts.TupleElements.Length)
+                            {
+                                subType = nts.TupleElements[index].Type;
+                            }
+                            else
+                            {
+                                var fieldName = $"Item{index + 1}";
+                                var field = type.GetMembers(fieldName).FirstOrDefault() as IFieldSymbol;
+                                if (field != null) subType = field.Type;
+                            }
+                            GetVariables(sub.Pattern, model, rewriter, variables, subType);
+                            index++;
+                        }
+                    }
+                    else
+                    {
+                        foreach (var sub in recursive.PositionalPatternClause.Subpatterns)
+                        {
+                            GetVariables(sub.Pattern, model, rewriter, variables, null);
+                        }
                     }
                 }
             }
             else if (pattern is ListPatternSyntax listPattern)
             {
+                ITypeSymbol elementType = null;
+                if (expressionType is IArrayTypeSymbol ats)
+                {
+                    elementType = ats.ElementType;
+                }
+                else if (expressionType is INamedTypeSymbol nts)
+                {
+                    var indexer = nts.GetMembers().OfType<IPropertySymbol>().FirstOrDefault(p => p.IsIndexer);
+                    if (indexer != null)
+                    {
+                        elementType = indexer.Type;
+                    }
+                }
+
                 foreach (var p in listPattern.Patterns)
                 {
-                    GetVariables(p, model, variables);
+                    GetVariables(p, model, rewriter, variables, elementType);
                 }
             }
             else if (pattern is SlicePatternSyntax slicePattern)
             {
                 if (slicePattern.Pattern != null)
                 {
-                    GetVariables(slicePattern.Pattern, model, variables);
+                    GetVariables(slicePattern.Pattern, model, rewriter, variables, expressionType);
                 }
             }
             else if (pattern is ParenthesizedPatternSyntax paren)
             {
-                GetVariables(paren.Pattern, model, variables);
+                GetVariables(paren.Pattern, model, rewriter, variables, expressionType);
             }
         }
 
-        public SyntaxNode InsertVariables(SyntaxNode root, SemanticModel model)
+        public SyntaxNode InsertVariables(SyntaxNode root, SemanticModel model, SharpSixRewriter rewriter)
         {
             var patterns = root
                 .DescendantNodes()
                 .OfType<IsPatternExpressionSyntax>();
 
             var updatedStatements = new Dictionary<SyntaxNode, List<LocalDeclarationStatementSyntax>>();
+            var declaredVariables = new Dictionary<SyntaxNode, HashSet<string>>();
 
             foreach (var pattern in patterns)
             {
@@ -111,14 +221,31 @@ namespace H5.Translator
                     if (beforeStatement != null)
                     {
                         var vars = new List<(SingleVariableDesignationSyntax Designation, TypeSyntax Type, bool IsValueType)>();
-                        GetVariables(pattern.Pattern, model, vars);
+
+                        var typeInfo = model.GetTypeInfo(pattern.Expression);
+                        var exprType = typeInfo.Type ?? typeInfo.ConvertedType;
+
+                        GetVariables(pattern.Pattern, model, rewriter, vars, exprType);
 
                         if (vars.Count > 0)
                         {
                             var locals = updatedStatements.ContainsKey(beforeStatement) ? updatedStatements[beforeStatement] : new List<LocalDeclarationStatementSyntax>();
 
+                            if (!declaredVariables.ContainsKey(beforeStatement))
+                            {
+                                declaredVariables[beforeStatement] = new HashSet<string>();
+                            }
+                            var scopeVars = declaredVariables[beforeStatement];
+
                             foreach (var v in vars)
                             {
+                                var varName = v.Designation.Identifier.ValueText;
+                                if (scopeVars.Contains(varName))
+                                {
+                                    continue;
+                                }
+                                scopeVars.Add(varName);
+
                                 if (!typesInfo.ContainsKey(v.Type.ToString()))
                                 {
                                     typesInfo[v.Type.ToString()] = v.IsValueType;
@@ -272,25 +399,16 @@ namespace H5.Translator
                         // Handle Constant Pattern (Top-level optimization/legacy handling)
                         else if (pattern.Pattern is ConstantPatternSyntax cps)
                         {
-                             // Use MakeCheck logic directly or keep existing special handling if strictly needed.
-                             // Existing logic for top-level constant pattern seems identical to what MakeCheck should do,
-                             // except MakeCheck is cleaner. Let's reuse MakeCheck logic here too for consistency,
-                             // unless there is a reason not to.
-                             // Actually, the existing logic handles null specifically. MakeCheck also does.
-                             // So we can fallback to MakeCheck for everything else.
-
-                             updatedPatterns[pattern] = MakeCheck(pattern.Expression, pattern.Pattern, model).NormalizeWhitespace();
+                             updatedPatterns[pattern] = MakeCheck(pattern.Expression, pattern.Pattern, model, null).NormalizeWhitespace();
                         }
                         // Handle Recursive Pattern
                         else if (pattern.Pattern is RecursivePatternSyntax recursivePattern)
                         {
-                            updatedPatterns[pattern] = MakeCheck(pattern.Expression, recursivePattern, model).NormalizeWhitespace();
+                            updatedPatterns[pattern] = MakeCheck(pattern.Expression, recursivePattern, model, null).NormalizeWhitespace();
                         }
                         else
                         {
-                             // Fallback for other patterns (Relational, Binary, Unary, Type, Parenthesized)
-                             // which are handled by MakeCheck but were missing here.
-                             updatedPatterns[pattern] = MakeCheck(pattern.Expression, pattern.Pattern, model).NormalizeWhitespace();
+                             updatedPatterns[pattern] = MakeCheck(pattern.Expression, pattern.Pattern, model, null).NormalizeWhitespace();
                         }
                     }
                 }
@@ -308,8 +426,21 @@ namespace H5.Translator
             return root;
         }
 
-        private ExpressionSyntax MakeCheck(ExpressionSyntax expression, PatternSyntax pattern, SemanticModel model)
+        private ExpressionSyntax MakeCheck(ExpressionSyntax expression, PatternSyntax pattern, SemanticModel model, ITypeSymbol expressionType = null)
         {
+            if (expressionType == null)
+            {
+                try
+                {
+                    var ti = model.GetTypeInfo(expression);
+                    expressionType = ti.Type ?? ti.ConvertedType;
+                }
+                catch
+                {
+                    // Ignore, expression might be synthesized
+                }
+            }
+
             if (pattern is ConstantPatternSyntax constPattern)
             {
                 if (constPattern.Expression.IsKind(SyntaxKind.NullLiteralExpression))
@@ -334,6 +465,12 @@ namespace H5.Translator
                     condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, typeCheck);
 
                     typedExpression = SyntaxFactory.ParenthesizedExpression(SyntaxFactory.CastExpression(recursivePattern.Type, expression));
+
+                    var ti = model.GetTypeInfo(recursivePattern.Type);
+                    if (ti.Type != null)
+                    {
+                        expressionType = ti.Type;
+                    }
                 }
 
                 if (recursivePattern.PropertyPatternClause != null)
@@ -341,24 +478,24 @@ namespace H5.Translator
                     foreach (var sub in recursivePattern.PropertyPatternClause.Subpatterns)
                     {
                         var propAccess = SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, typedExpression, sub.NameColon.Name);
-                        var subCheck = MakeCheck(propAccess, sub.Pattern, model);
+
+                        ITypeSymbol subType = null;
+                        if (expressionType != null)
+                        {
+                            var members = expressionType.GetMembers(sub.NameColon.Name.Identifier.ValueText);
+                            var member = members.FirstOrDefault();
+                            if (member is IPropertySymbol ps) subType = ps.Type;
+                            else if (member is IFieldSymbol fs) subType = fs.Type;
+                        }
+
+                        var subCheck = MakeCheck(propAccess, sub.Pattern, model, subType);
                         condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, subCheck);
                     }
                 }
 
                 if (recursivePattern.PositionalPatternClause != null)
                 {
-                    var typeInfo = model.GetTypeInfo(expression);
-                    var type = typeInfo.Type ?? typeInfo.ConvertedType;
-
-                    if (recursivePattern.Type != null)
-                    {
-                         var ti = model.GetTypeInfo(recursivePattern.Type);
-                         if (ti.Type != null)
-                         {
-                             type = ti.Type;
-                         }
-                    }
+                    var type = expressionType;
 
                     if (type != null && (type.IsTupleType || type.Name == "ValueTuple" || type.Name == "System.ValueTuple"))
                     {
@@ -372,7 +509,18 @@ namespace H5.Translator
                                 SyntaxFactory.IdentifierName(fieldName)
                             );
 
-                            var subCheck = MakeCheck(memberAccess, subPattern.Pattern, model);
+                            ITypeSymbol subType = null;
+                            if (type is INamedTypeSymbol nts && nts.IsTupleType && index < nts.TupleElements.Length)
+                            {
+                                subType = nts.TupleElements[index].Type;
+                            }
+                            else
+                            {
+                                var field = type.GetMembers(fieldName).FirstOrDefault() as IFieldSymbol;
+                                if (field != null) subType = field.Type;
+                            }
+
+                            var subCheck = MakeCheck(memberAccess, subPattern.Pattern, model, subType);
                             condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, subCheck);
                             index++;
                         }
@@ -450,6 +598,20 @@ namespace H5.Translator
                 }
                 condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, lengthCheck);
 
+                ITypeSymbol elementType = null;
+                if (expressionType is IArrayTypeSymbol ats)
+                {
+                    elementType = ats.ElementType;
+                }
+                else if (expressionType is INamedTypeSymbol nts)
+                {
+                    var indexer = nts.GetMembers().OfType<IPropertySymbol>().FirstOrDefault(p => p.IsIndexer);
+                    if (indexer != null)
+                    {
+                        elementType = indexer.Type;
+                    }
+                }
+
                 for (int i = 0; i < patternCount; i++)
                 {
                     var p = listPattern.Patterns[i];
@@ -488,7 +650,7 @@ namespace H5.Translator
                                         SyntaxFactory.GenericName("Write").AddTypeArgumentListArguments(SyntaxFactory.ParseTypeName("dynamic"))))
                                     .WithArgumentList(SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(args)));
 
-                                var subCheck = MakeCheck(getSubArray, slice.Pattern, model);
+                                var subCheck = MakeCheck(getSubArray, slice.Pattern, model, expressionType);
                                 condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, subCheck);
                             }
                         }
@@ -514,7 +676,7 @@ namespace H5.Translator
                                )));
                         }
 
-                        var elementCheck = MakeCheck(elementAccess, p, model);
+                        var elementCheck = MakeCheck(elementAccess, p, model, elementType);
                         condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, elementCheck);
                     }
                 }
@@ -532,15 +694,15 @@ namespace H5.Translator
                          return SyntaxFactory.BinaryExpression(SyntaxKind.NotEqualsExpression, expression, innerConst.Expression);
                     }
 
-                    return SyntaxFactory.PrefixUnaryExpression(SyntaxKind.LogicalNotExpression, SyntaxFactory.ParenthesizedExpression(MakeCheck(expression, unaryPattern.Pattern, model)));
+                    return SyntaxFactory.PrefixUnaryExpression(SyntaxKind.LogicalNotExpression, SyntaxFactory.ParenthesizedExpression(MakeCheck(expression, unaryPattern.Pattern, model, expressionType)));
                 }
             }
             else if (pattern is BinaryPatternSyntax binaryPattern)
             {
                 // pattern is left and right
                 // pattern is left or right
-                var leftCheck = MakeCheck(expression, binaryPattern.Left, model);
-                var rightCheck = MakeCheck(expression, binaryPattern.Right, model);
+                var leftCheck = MakeCheck(expression, binaryPattern.Left, model, expressionType);
+                var rightCheck = MakeCheck(expression, binaryPattern.Right, model, expressionType);
 
                 if (binaryPattern.OperatorToken.IsKind(SyntaxKind.AndKeyword))
                 {
@@ -553,7 +715,7 @@ namespace H5.Translator
             }
             else if (pattern is ParenthesizedPatternSyntax parenPattern)
             {
-                return MakeCheck(expression, parenPattern.Pattern, model);
+                return MakeCheck(expression, parenPattern.Pattern, model, expressionType);
             }
             else if (pattern is RelationalPatternSyntax relPattern)
             {
