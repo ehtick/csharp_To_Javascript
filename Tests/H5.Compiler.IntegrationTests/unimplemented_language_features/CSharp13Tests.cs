@@ -68,7 +68,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task ImplicitIndexAccess()
         {
             var code = """
