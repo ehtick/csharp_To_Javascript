@@ -31,6 +31,8 @@ public class Program
             await RunTest(code);
         }
 
+
+
         [TestMethod]
         public async Task FileScopedNamespaces()
         {
