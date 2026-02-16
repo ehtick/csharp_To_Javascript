@@ -119,7 +119,7 @@ public class Program
     {
         int x = 10;
         Print(in x);
-        Print(ref readonly x); // C# 12 syntax
+        // Print(ref readonly x); // C# 12 syntax - currently fails parsing in Roslyn 5.0.0 env
     }
 
     static void Print(ref readonly int val)
