@@ -752,42 +752,29 @@ namespace H5.Translator
                  node = node.WithMembers(SyntaxFactory.List(otherMembers));
             }
 
-            var fileScopedNamespace = node.Members.OfType<FileScopedNamespaceDeclarationSyntax>().FirstOrDefault();
-            if (fileScopedNamespace != null)
+            return base.VisitCompilationUnit(node);
+        }
+
+        public override SyntaxNode VisitFileScopedNamespaceDeclaration(FileScopedNamespaceDeclarationSyntax node)
+        {
+            var members = new List<MemberDeclarationSyntax>();
+            foreach (var member in node.Members)
             {
-                var members = new List<MemberDeclarationSyntax>();
-                foreach (var member in node.Members)
+                var visited = Visit(member) as MemberDeclarationSyntax;
+                if (visited != null)
                 {
-                    if (member == fileScopedNamespace) continue;
-                    members.Add(member);
+                    members.Add(visited);
                 }
-
-                members.AddRange(fileScopedNamespace.Members);
-
-                var newNamespace = SyntaxFactory.NamespaceDeclaration(
-                    fileScopedNamespace.Name,
-                    fileScopedNamespace.Externs,
-                    fileScopedNamespace.Usings,
-                    SyntaxFactory.List(members)
-                ).WithLeadingTrivia(fileScopedNamespace.GetLeadingTrivia());
-
-                var newCompilationUnitMembers = new List<MemberDeclarationSyntax>();
-                // Add usings/externs from compilation unit if needed, but usually they are at top.
-                // FileScopedNamespace usings are already in the new namespace.
-                // Compilation unit usings should remain in compilation unit or be moved?
-                // Standard behavior: Compilation unit usings apply to the whole file.
-                // FileScopedNamespace usings apply to the namespace.
-                // We just replace the namespace declaration.
-
-                // However, the structure is flat in FileScopedNamespace.
-                // node.Members contains the namespace AND potentially other things (though strictly only one namespace allowed).
-
-                newCompilationUnitMembers.Add(newNamespace);
-
-                node = node.WithMembers(SyntaxFactory.List(newCompilationUnitMembers));
             }
 
-            return base.VisitCompilationUnit(node);
+            return SyntaxFactory.NamespaceDeclaration(
+                node.Name,
+                node.Externs,
+                node.Usings,
+                SyntaxFactory.List(members)
+            )
+            .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+            .WithLeadingTrivia(node.GetLeadingTrivia());
         }
 
         public override SyntaxNode VisitWithExpression(WithExpressionSyntax node)
