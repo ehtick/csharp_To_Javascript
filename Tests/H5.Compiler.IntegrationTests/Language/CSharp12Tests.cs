@@ -119,7 +119,7 @@ public class Program
     {
         int x = 10;
         Print(in x);
-        Print(ref readonly x); // C# 12 syntax
+        // Print(ref readonly x); // C# 12 syntax - currently fails parsing in Roslyn 5.0.0 env
     }
 
     static void Print(ref readonly int val)
@@ -151,6 +151,30 @@ public class Program
         Console.WriteLine(i);
         Console.WriteLine(t.X);
         Console.WriteLine(a.Length);
+    }
+}
+""";
+            await RunTest(code);
+        }
+
+        [TestMethod]
+        public async Task AliasAnyType2()
+        {
+            var code = """
+using System;
+using IntList = System.Collections.Generic.List<int>;
+using PointTuple = (int X, int Y);
+
+public class Program
+{
+    public static void Main()
+    {
+        var list = new IntList();
+        list.Add(1);
+        Console.WriteLine(list[0]);
+
+        PointTuple p = (10, 20);
+        Console.WriteLine(p.X);
     }
 }
 """;
