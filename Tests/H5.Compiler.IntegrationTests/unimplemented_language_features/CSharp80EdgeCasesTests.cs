@@ -9,25 +9,8 @@ namespace H5.Compiler.IntegrationTests.UnimplementedLanguageFeatures
         [TestMethod]
         public async Task NullCoalescingAssignment_SideEffects()
         {
-            var code = """
-using System;
-
-public class Program
-{
-    public static void Main()
-    {
-        int i = 0;
-        int[] arr = new int[5];
-
-        // i starts at 0
-        arr[i++] ??= 42; // i becomes 1. arr[0] is 0 (not null), so assignment happens (0 is not null? Wait, int is not nullable).
-                         // Wait, for int?, ??= works. For int, ??= is invalid.
-                         // Let's use int? or object.
-    }
-}
-""";
             // Correct logic:
-            code = """
+            var code = """
 using System;
 
 public class Program
