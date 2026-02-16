@@ -1443,6 +1443,16 @@ namespace H5.Translator
             var originalNode = node;
             node = (InvocationExpressionSyntax)base.VisitInvocationExpression(node);
 
+            // Process CallerArgumentExpression
+            if (method != null)
+            {
+                var newArgs = ProcessCallerArgumentExpression(node.ArgumentList, originalNode, method, semanticModel);
+                if (newArgs != node.ArgumentList)
+                {
+                    node = node.WithArgumentList(newArgs);
+                }
+            }
+
             // Handle params collection expansion (C# 13)
             if (method != null && method.Parameters.Length > 0)
             {
@@ -3122,6 +3132,17 @@ namespace H5.Translator
 
             var originalNode = node;
             node = (ObjectCreationExpressionSyntax)base.VisitObjectCreationExpression(node);
+
+            var constructorSymbol = semanticModel.GetSymbolInfo(originalNode).Symbol as IMethodSymbol;
+            if (constructorSymbol != null)
+            {
+                var newArgs = ProcessCallerArgumentExpression(node.ArgumentList, originalNode, constructorSymbol, semanticModel);
+                if (newArgs != node.ArgumentList)
+                {
+                    node = node.WithArgumentList(newArgs);
+                }
+            }
+
             if (needRewrite)
             {
                 if (IsExpressionOfT)
@@ -3657,6 +3678,115 @@ namespace H5.Translator
                                        (SyntaxNode)SyntaxFactory.ConditionalExpression(condition, whenTrue, whenFalse);
 
             return newNode.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+        }
+
+        private ArgumentListSyntax ProcessCallerArgumentExpression(ArgumentListSyntax argumentList, SyntaxNode originalNode, IMethodSymbol method, SemanticModel semanticModel)
+        {
+            if (method == null || argumentList == null)
+            {
+                return argumentList;
+            }
+
+            var newArgs = new List<ArgumentSyntax>(argumentList.Arguments);
+            bool changed = false;
+
+            // Get original arguments for text extraction
+            // We need to map parameters to arguments in original node to get text
+            // originalNode is InvocationExpressionSyntax or ObjectCreationExpressionSyntax
+            ArgumentListSyntax originalArgsList = null;
+            if (originalNode is InvocationExpressionSyntax inv) originalArgsList = inv.ArgumentList;
+            else if (originalNode is ObjectCreationExpressionSyntax obj) originalArgsList = obj.ArgumentList;
+
+            if (originalArgsList == null) return argumentList;
+
+            for (int i = 0; i < method.Parameters.Length; i++)
+            {
+                var param = method.Parameters[i];
+                var callerArgAttr = param.GetAttributes().FirstOrDefault(a =>
+                    a.AttributeClass != null &&
+                    a.AttributeClass.Name == "CallerArgumentExpressionAttribute" &&
+                    (a.AttributeClass.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices"));
+
+                if (callerArgAttr != null)
+                {
+                    // Check if argument is explicitly provided
+                    // Logic:
+                    // 1. Check for named argument
+                    bool isProvided = argumentList.Arguments.Any(a => a.NameColon != null && a.NameColon.Name.Identifier.ValueText == param.Name);
+
+                    // 2. Check for positional argument
+                    if (!isProvided)
+                    {
+                        // Count positional arguments up to this parameter
+                        int positionalCount = 0;
+                        foreach (var arg in argumentList.Arguments)
+                        {
+                            if (arg.NameColon == null) positionalCount++;
+                        }
+
+                        // If we have enough positional args, then this param is provided
+                        if (positionalCount > i) isProvided = true;
+                    }
+
+                    if (!isProvided)
+                    {
+                        // Get target parameter name
+                        string targetParamName = callerArgAttr.ConstructorArguments.FirstOrDefault().Value as string;
+                        if (!string.IsNullOrEmpty(targetParamName))
+                        {
+                            // Find target parameter symbol
+                            var targetParam = method.Parameters.FirstOrDefault(p => p.Name == targetParamName);
+                            if (targetParam != null)
+                            {
+                                // Find argument for target parameter in ORIGINAL node
+                                ArgumentSyntax targetArg = null;
+                                int targetParamIndex = method.Parameters.IndexOf(targetParam);
+
+                                // Check named args in original
+                                targetArg = originalArgsList.Arguments.FirstOrDefault(a => a.NameColon != null && a.NameColon.Name.Identifier.ValueText == targetParamName);
+
+                                if (targetArg == null)
+                                {
+                                    // Check positional args in original
+                                    int originalPositionalCount = 0;
+                                    foreach (var arg in originalArgsList.Arguments)
+                                    {
+                                        if (arg.NameColon == null)
+                                        {
+                                            if (originalPositionalCount == targetParamIndex)
+                                            {
+                                                targetArg = arg;
+                                                break;
+                                            }
+                                            originalPositionalCount++;
+                                        }
+                                    }
+                                }
+
+                                if (targetArg != null)
+                                {
+                                    // Capture text
+                                    var text = targetArg.Expression.ToString();
+
+                                    // Create string literal
+                                    var literal = SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(text));
+
+                                    // Add argument
+                                    newArgs.Add(SyntaxFactory.Argument(SyntaxFactory.NameColon(param.Name), default, literal));
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (changed)
+            {
+                return SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(newArgs));
+            }
+
+            return argumentList;
         }
     }
 }
