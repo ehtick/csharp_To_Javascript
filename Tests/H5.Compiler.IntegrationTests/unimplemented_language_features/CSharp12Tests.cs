@@ -35,35 +35,6 @@ public class Program
 
         [TestMethod]
         [Ignore("Not implemented yet")]
-        public async Task CollectionExpressions()
-        {
-            var code = """
-using System;
-using System.Collections.Generic;
-
-public class Program
-{
-    public static void Main()
-    {
-        int[] a = [1, 2, 3];
-        List<int> b = [4, 5, 6];
-        Span<int> c = [7, 8, 9];
-
-        Console.WriteLine(a.Length);
-        Console.WriteLine(b.Count);
-        Console.WriteLine(c.Length);
-
-        // Spread operator
-        int[] d = [..a, ..b];
-        Console.WriteLine(d.Length); // 6
-    }
-}
-""";
-            await RunTest(code);
-        }
-
-        [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task InlineArrays()
         {
             var code = """
@@ -102,29 +73,7 @@ public class Program
             await RunTest(code);
         }
 
-        [TestMethod]
-        public async Task AliasAnyType()
-        {
-            var code = """
-using System;
-using IntList = System.Collections.Generic.List<int>;
-using PointTuple = (int X, int Y);
 
-public class Program
-{
-    public static void Main()
-    {
-        var list = new IntList();
-        list.Add(1);
-        Console.WriteLine(list[0]);
-
-        PointTuple p = (10, 20);
-        Console.WriteLine(p.X);
-    }
-}
-""";
-            await RunTest(code);
-        }
 
         [TestMethod]
         [Ignore("Not implemented yet")]
