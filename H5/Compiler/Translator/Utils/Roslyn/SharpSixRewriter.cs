@@ -2875,6 +2875,7 @@ namespace H5.Translator
                 needRewrite = NeedRewriteInitializer(node.Initializer, initializerInfos, ref extensionMethodExists, ref isImplicitElementAccessSyntax);
             }
 
+            var originalNode = node;
             node = (ObjectCreationExpressionSyntax)base.VisitObjectCreationExpression(node);
             if (needRewrite)
             {
@@ -2882,14 +2883,14 @@ namespace H5.Translator
                 {
                     if (isImplicitElementAccessSyntax)
                     {
-                        var mapped = semanticModel.SyntaxTree.GetLineSpan(node.Span);
-                        throw new Exception(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Index collection initializer is not supported inside Expression<T>", semanticModel.SyntaxTree.FilePath, node.ToString()));
+                        var mapped = semanticModel.SyntaxTree.GetLineSpan(originalNode.Span);
+                        throw new Exception(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Index collection initializer is not supported inside Expression<T>", semanticModel.SyntaxTree.FilePath, originalNode.ToString()));
                     }
 
                     if (extensionMethodExists)
                     {
-                        var mapped = semanticModel.SyntaxTree.GetLineSpan(node.Span);
-                        throw new Exception(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Extension method for collection initializer is not supported inside Expression<T>", semanticModel.SyntaxTree.FilePath, node.ToString()));
+                        var mapped = semanticModel.SyntaxTree.GetLineSpan(originalNode.Span);
+                        throw new Exception(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Extension method for collection initializer is not supported inside Expression<T>", semanticModel.SyntaxTree.FilePath, originalNode.ToString()));
                     }
 
                     return node;
@@ -2908,7 +2909,7 @@ namespace H5.Translator
 
                 List<StatementSyntax> statements = new List<StatementSyntax>();
 
-                var parent = node.Parent;
+                var parent = originalNode.Parent;
 
                 while (parent != null && !(parent is MethodDeclarationSyntax) && !(parent is ClassDeclarationSyntax))
                 {
@@ -2925,7 +2926,7 @@ namespace H5.Translator
                     }
                 }
 
-                var typeInfo = semanticModel.GetTypeInfo(node);
+                var typeInfo = semanticModel.GetTypeInfo(originalNode);
                 var type = typeInfo.Type ?? typeInfo.ConvertedType;
 
                 ConvertInitializers(initializers, instance, statements, initializerInfos, type);

@@ -272,5 +272,24 @@ public class Program
 """;
             await RunTest(code);
         }
+
+        [TestMethod]
+        public async Task TargetTypedNewInObjectInitializer()
+        {
+            var code = """
+using System;
+using System.Collections.Generic;
+
+public class Program
+{
+    public static void Main()
+    {
+        var list = new List<object> { new() };
+        Console.WriteLine(list.Count);
+    }
+}
+""";
+            await RunTest(code);
+        }
     }
 }
