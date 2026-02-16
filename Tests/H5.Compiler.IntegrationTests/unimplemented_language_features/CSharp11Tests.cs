@@ -29,33 +29,6 @@ public class Program
             await RunTest(code);
         }
 
-        [TestMethod]
-        [Ignore("Not implemented yet")]
-        public async Task GenericAttributes()
-        {
-            var code = """
-using System;
-
-[AttributeUsage(AttributeTargets.Class)]
-public class GenericAttribute<T> : Attribute
-{
-    public string TypeName => typeof(T).Name;
-}
-
-[GenericAttribute<int>]
-public class MyClass { }
-
-public class Program
-{
-    public static void Main()
-    {
-        var attr = (GenericAttribute<int>)Attribute.GetCustomAttribute(typeof(MyClass), typeof(GenericAttribute<int>));
-        Console.WriteLine(attr.TypeName);
-    }
-}
-""";
-            await RunTest(code);
-        }
 
         [TestMethod]
         public async Task ListPatterns()

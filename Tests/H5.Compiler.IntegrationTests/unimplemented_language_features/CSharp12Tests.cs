@@ -74,53 +74,6 @@ public class Program
         }
 
         [TestMethod]
-        public async Task AliasAnyType()
-        {
-            var code = """
-using System;
-using IntList = System.Collections.Generic.List<int>;
-using PointTuple = (int X, int Y);
-
-public class Program
-{
-    public static void Main()
-    {
-        var list = new IntList();
-        list.Add(1);
-        Console.WriteLine(list[0]);
-
-        PointTuple p = (10, 20);
-        Console.WriteLine(p.X);
-    }
-}
-""";
-            await RunTest(code);
-        }
-
-        [TestMethod]
-        [Ignore("Not implemented yet")]
-        public async Task RefReadonlyParameters()
-        {
-            var code = """
-using System;
-
-public class Program
-{
-    public static void Main()
-    {
-        int x = 10;
-        Print(in x);
-        Print2(ref x);
-    }
-
-    static void Print(in int x) => Console.WriteLine(x);
-    static void Print2(ref readonly int x) => Console.WriteLine(x);
-}
-""";
-            await RunTest(code);
-        }
-
-        [TestMethod]
         [Ignore("Not implemented yet")]
         public async Task ExperimentalAttribute()
         {

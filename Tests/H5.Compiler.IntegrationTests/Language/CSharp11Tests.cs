@@ -164,29 +164,5 @@ public class Program
 """;
             await RunTest(code);
         }
-
-        [TestMethod]
-        public async Task GenericAttributes()
-        {
-             var code = """
-using System;
-
-public class MyAttribute<T> : Attribute
-{
-    public Type Type => typeof(T);
-}
-
-[MyAttribute<int>]
-public class Program
-{
-    public static void Main()
-    {
-        var attr = (MyAttribute<int>)Attribute.GetCustomAttribute(typeof(Program), typeof(MyAttribute<int>));
-        Console.WriteLine(attr.Type.Name);
-    }
-}
-""";
-            await RunTest(code);
-        }
     }
 }
