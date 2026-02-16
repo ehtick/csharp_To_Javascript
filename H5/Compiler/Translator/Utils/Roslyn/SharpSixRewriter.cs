@@ -1836,7 +1836,7 @@ namespace H5.Translator
                 }
                 else if (target is ITypeSymbol ts)
                 {
-                    return SyntaxHelper.GenerateTypeSyntax(ts).WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+                    return SyntaxFactory.ParseName(ts.GetFullyQualifiedNameAndValidate(semanticModel, node.SpanStart)).WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
                 }
             }
 
