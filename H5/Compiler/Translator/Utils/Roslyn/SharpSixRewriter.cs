@@ -853,7 +853,7 @@ namespace H5.Translator
                 }
             }
 
-            statements.Add(SyntaxFactory.ReturnStatement(SyntaxFactory.IdentifierName(tempParamName)));
+            statements.Add(SyntaxFactory.ReturnStatement(SyntaxFactory.IdentifierName(tempParamName).WithLeadingTrivia(SyntaxFactory.Space)));
 
             var lambda = SyntaxFactory.ParenthesizedLambdaExpression(
                 SyntaxFactory.ParameterList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Parameter(SyntaxFactory.Identifier(tempParamName)))),
@@ -2353,6 +2353,43 @@ namespace H5.Translator
                     .WithBody(SyntaxFactory.Block(deconstructBody));
 
                 classDecl = classDecl.AddMembers(deconstruct);
+            }
+
+            // Add Clone method for H5 support (required for 'with' expressions)
+            var cloneMethod = SyntaxFactory.MethodDeclaration(
+                SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.ObjectKeyword).WithTrailingTrivia(SyntaxFactory.Space)), "Clone")
+                .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
+                .WithBody(SyntaxFactory.Block(
+                    SyntaxFactory.ReturnStatement(
+                        SyntaxFactory.InvocationExpression(
+                             SyntaxFactory.MemberAccessExpression(
+                                 SyntaxKind.SimpleMemberAccessExpression,
+                                 SyntaxFactory.ParseTypeName("global::H5.Script"),
+                                 SyntaxFactory.GenericName("Write")
+                                     .WithTypeArgumentList(SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList<TypeSyntax>(
+                                         SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.ObjectKeyword))
+                                     )))
+                             ),
+                             SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(
+                                 SyntaxFactory.Argument(
+                                     SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal("H5.copyProperties(new (this.constructor)(), this)"))
+                                 )
+                             ))
+                        ).WithLeadingTrivia(SyntaxFactory.Space)
+                    )
+                ));
+
+            classDecl = classDecl.AddMembers(cloneMethod);
+
+            // Add System.ICloneable interface
+            var cloneableType = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName("global::System.ICloneable"));
+            if (classDecl.BaseList == null)
+            {
+                classDecl = classDecl.WithBaseList(SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(cloneableType)));
+            }
+            else
+            {
+                classDecl = classDecl.WithBaseList(classDecl.BaseList.AddTypes(cloneableType));
             }
 
             // return VisitClassDeclaration(classDecl);
