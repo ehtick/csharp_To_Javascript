@@ -264,6 +264,11 @@
 
         "Resources/.generated/System/Guid.js",
 
+        "Resources/.generated/System/Index.js",
+        "Resources/.generated/System/Range.js",
+        "Resources/.generated/System/Span.js",
+        "Resources/.generated/System/ReadOnlySpan.js",
+
         "Resources/.generated/System/ITupleInternal.js",
         "Resources/.generated/System/Tuple.js",
         "Resources/.generated/System/ValueTuple.js",
