@@ -555,8 +555,77 @@ namespace H5.Translator
             var info = semanticModel.GetForEachStatementInfo(node);
             if (info.GetEnumeratorMethod != null && info.GetEnumeratorMethod.IsExtensionMethod)
             {
-                var mapped = semanticModel.SyntaxTree.GetLineSpan(node.Span);
-                throw new NotSupportedException(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Extension GetEnumerator is not supported", semanticModel.SyntaxTree.FilePath, node.ToString()));
+                var collection = (ExpressionSyntax)Visit(node.Expression);
+                var enumeratorMethod = info.GetEnumeratorMethod;
+
+                var enumeratorVarName = GetUniqueTempKey("enumerator");
+                var enumeratorType = enumeratorMethod.ReturnType;
+                var enumeratorTypeSyntax = SyntaxHelper.GenerateTypeSyntax(enumeratorType, semanticModel, node.SpanStart, this);
+
+                var typeName = enumeratorMethod.ContainingType.FullyQualifiedName();
+                if (typeName.StartsWith("global::"))
+                {
+                    typeName = typeName.Substring(8);
+                }
+
+                var getEnumeratorCall = SyntaxHelper.GenerateStaticMethodCall(
+                    enumeratorMethod.Name,
+                    typeName,
+                    new[] { SyntaxFactory.Argument(collection) },
+                    enumeratorMethod.TypeArguments.ToArray()
+                ).Expression;
+
+                var enumeratorDecl = SyntaxFactory.LocalDeclarationStatement(
+                    SyntaxFactory.VariableDeclaration(SyntaxFactory.ParseTypeName("var"))
+                    .WithVariables(SyntaxFactory.SingletonSeparatedList(
+                        SyntaxFactory.VariableDeclarator(enumeratorVarName)
+                        .WithInitializer(SyntaxFactory.EqualsValueClause(getEnumeratorCall))
+                    ))
+                ).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
+
+                var moveNextCall = SyntaxFactory.InvocationExpression(
+                    SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName(enumeratorVarName), SyntaxFactory.IdentifierName("MoveNext")),
+                    SyntaxFactory.ArgumentList()
+                );
+
+                var loopBody = (StatementSyntax)Visit(node.Statement);
+                if (!(loopBody is BlockSyntax))
+                {
+                    loopBody = SyntaxFactory.Block(loopBody);
+                }
+
+                var currentAccess = SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName(enumeratorVarName), SyntaxFactory.IdentifierName("Current"));
+
+                var iterationVarDecl = SyntaxFactory.LocalDeclarationStatement(
+                    SyntaxFactory.VariableDeclaration(node.Type)
+                    .WithVariables(SyntaxFactory.SingletonSeparatedList(
+                        SyntaxFactory.VariableDeclarator(node.Identifier)
+                        .WithInitializer(SyntaxFactory.EqualsValueClause(currentAccess))
+                    ))
+                );
+
+                var newLoopBody = SyntaxFactory.Block(iterationVarDecl).AddStatements(((BlockSyntax)loopBody).Statements.ToArray());
+
+                var whileLoop = SyntaxFactory.WhileStatement(moveNextCall, newLoopBody);
+
+                var script = "if (H5.is({0}, System.IDisposable)) H5.cast({0}, System.IDisposable).System$IDisposable$Dispose();";
+                var writeCall = SyntaxFactory.InvocationExpression(
+                    SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ParseName("global::H5.Script"), SyntaxFactory.IdentifierName("Write")),
+                    SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(new[] {
+                        SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(script))),
+                        SyntaxFactory.Argument(SyntaxFactory.IdentifierName(enumeratorVarName))
+                    }))
+                );
+
+                var disposeCheck = SyntaxFactory.ExpressionStatement(writeCall).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
+
+                var tryFinally = SyntaxFactory.TryStatement(
+                    SyntaxFactory.Block(whileLoop),
+                    SyntaxFactory.List<CatchClauseSyntax>(),
+                    SyntaxFactory.FinallyClause(SyntaxFactory.Block(disposeCheck))
+                );
+
+                return SyntaxFactory.Block(enumeratorDecl, tryFinally);
             }
 
             return base.VisitForEachStatement(node);
@@ -2976,6 +3045,58 @@ namespace H5.Translator
 
             var oldIndex = IndexInstance;
             IndexInstance = 0;
+
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitMethodDeclaration(node);
+            }
+
+            var methodSymbol = semanticModel.GetDeclaredSymbol(node);
+            bool isModuleInitializer = false;
+
+            if (methodSymbol != null)
+            {
+                var attrs = methodSymbol.GetAttributes();
+                if (attrs.Any(a => a.AttributeClass != null && a.AttributeClass.Name == "ModuleInitializerAttribute" && a.AttributeClass.ContainingNamespace?.ToDisplayString() == "System.Runtime.CompilerServices"))
+                {
+                    isModuleInitializer = true;
+                }
+            }
+
+            if (isModuleInitializer)
+            {
+                var newLists = new List<AttributeListSyntax>();
+                foreach (var list in node.AttributeLists)
+                {
+                    var newAttrs = new List<AttributeSyntax>();
+                    foreach (var attr in list.Attributes)
+                    {
+                        if (attr.Name.ToString().Contains("ModuleInitializer"))
+                        {
+                            continue;
+                        }
+                        newAttrs.Add(attr);
+                    }
+                    if (newAttrs.Count > 0)
+                    {
+                        newLists.Add(list.WithAttributes(SyntaxFactory.SeparatedList(newAttrs)));
+                    }
+                }
+
+                var initAttr = SyntaxFactory.Attribute(SyntaxFactory.ParseName("global::H5.Init"))
+                    .WithArgumentList(SyntaxFactory.AttributeArgumentList(SyntaxFactory.SingletonSeparatedList(
+                        SyntaxFactory.AttributeArgument(
+                            SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression,
+                                SyntaxFactory.ParseTypeName("global::H5.InitPosition"),
+                                SyntaxFactory.IdentifierName("After")
+                            )
+                        )
+                    )));
+
+                newLists.Add(SyntaxFactory.AttributeList(SyntaxFactory.SingletonSeparatedList(initAttr)));
+
+                node = node.WithAttributeLists(SyntaxFactory.List(newLists));
+            }
 
             node = base.VisitMethodDeclaration(node) as MethodDeclarationSyntax;
 

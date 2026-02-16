@@ -261,6 +261,7 @@
 
         "Resources/.generated/System/Runtime/CompilerServices/FormattableStringFactory/ConcreteFormattableString.js",
         "Resources/.generated/System/Runtime/CompilerServices/FormattableStringFactory.js",
+        "Resources/.generated/System/Runtime/CompilerServices/ModuleInitializerAttribute.js",
 
         "Resources/.generated/System/Guid.js",
 
