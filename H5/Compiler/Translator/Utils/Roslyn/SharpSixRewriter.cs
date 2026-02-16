@@ -581,7 +581,7 @@ namespace H5.Translator
                         SyntaxFactory.VariableDeclarator(enumeratorVarName)
                         .WithInitializer(SyntaxFactory.EqualsValueClause(getEnumeratorCall))
                     ))
-                ).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
+                ).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)).NormalizeWhitespace();
 
                 var moveNextCall = SyntaxFactory.InvocationExpression(
                     SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName(enumeratorVarName), SyntaxFactory.IdentifierName("MoveNext")),
@@ -602,7 +602,7 @@ namespace H5.Translator
                         SyntaxFactory.VariableDeclarator(node.Identifier)
                         .WithInitializer(SyntaxFactory.EqualsValueClause(currentAccess))
                     ))
-                );
+                ).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)).NormalizeWhitespace();
 
                 var newLoopBody = SyntaxFactory.Block(iterationVarDecl).AddStatements(((BlockSyntax)loopBody).Statements.ToArray());
 
