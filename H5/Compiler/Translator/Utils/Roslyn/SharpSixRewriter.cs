@@ -225,6 +225,7 @@ namespace H5.Translator
             result = Visit(syntaxTree.GetRoot());
 
             var replacers = new List<ICSharpReplacer>();
+            replacers.Add(new MethodImplAttributeRewriter());
 
             if (hasLocalFunctions)
             {
