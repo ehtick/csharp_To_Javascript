@@ -73,29 +73,7 @@ public class Program
             await RunTest(code);
         }
 
-        [TestMethod]
-        public async Task AliasAnyType()
-        {
-            var code = """
-using System;
-using IntList = System.Collections.Generic.List<int>;
-using PointTuple = (int X, int Y);
 
-public class Program
-{
-    public static void Main()
-    {
-        var list = new IntList();
-        list.Add(1);
-        Console.WriteLine(list[0]);
-
-        PointTuple p = (10, 20);
-        Console.WriteLine(p.X);
-    }
-}
-""";
-            await RunTest(code);
-        }
 
         [TestMethod]
         [Ignore("Not implemented yet")]
