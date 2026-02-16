@@ -2478,7 +2478,7 @@ namespace H5.Translator
                              }
                          }
 
-                         ConvertInitializers(initializers, instance, statements, initializerInfos);
+                         ConvertInitializers(initializers, instance, statements, initializerInfos, type);
 
                          statements.Add(SyntaxFactory.ReturnStatement(SyntaxFactory.IdentifierName(instance).WithLeadingTrivia(SyntaxFactory.Space)));
 
@@ -2835,7 +2835,10 @@ namespace H5.Translator
                     }
                 }
 
-                ConvertInitializers(initializers, instance, statements, initializerInfos);
+                var typeInfo = semanticModel.GetTypeInfo(node);
+                var type = typeInfo.Type ?? typeInfo.ConvertedType;
+
+                ConvertInitializers(initializers, instance, statements, initializerInfos, type);
 
                 statements.Add(SyntaxFactory.ReturnStatement(SyntaxFactory.IdentifierName(instance).WithLeadingTrivia(SyntaxFactory.Space)));
 
@@ -2864,7 +2867,7 @@ namespace H5.Translator
             return node;
         }
 
-        private static void ConvertInitializers(SeparatedSyntaxList<ExpressionSyntax> initializers, string instance, List<StatementSyntax> statements, List<InitializerInfo> infos)
+        private void ConvertInitializers(SeparatedSyntaxList<ExpressionSyntax> initializers, string instance, List<StatementSyntax> statements, List<InitializerInfo> infos, ITypeSymbol type)
         {
             var idx = 0;
             foreach (var init in initializers)
@@ -2922,22 +2925,78 @@ namespace H5.Translator
                         }
                         else if (be.Left is ImplicitElementAccessSyntax implicitSyntax)
                         {
+                            var newArgs = new List<ArgumentSyntax>();
+                            foreach (var arg in implicitSyntax.ArgumentList.Arguments)
+                            {
+                                if (arg.Expression is PrefixUnaryExpressionSyntax prefix && prefix.OperatorToken.IsKind(SyntaxKind.CaretToken))
+                                {
+                                    string lengthProp = "Length";
+                                    if (type != null)
+                                    {
+                                        if (type.GetMembers("Count").Any()) lengthProp = "Count";
+                                    }
+
+                                    var lengthAccess = SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression,
+                                        SyntaxFactory.ParseExpression(instance), SyntaxFactory.IdentifierName(lengthProp));
+
+                                    var val = prefix.Operand;
+
+                                    var newIdx = SyntaxFactory.BinaryExpression(SyntaxKind.SubtractExpression, lengthAccess, val);
+                                    newArgs.Add(arg.WithExpression(newIdx));
+                                }
+                                else
+                                {
+                                    newArgs.Add((ArgumentSyntax)Visit(arg));
+                                }
+                            }
+
                             name = SyntaxFactory.ElementAccessExpression(SyntaxFactory.IdentifierName(instance),
-                                    implicitSyntax.ArgumentList.WithoutTrivia()).ToString();
+                                    SyntaxFactory.BracketedArgumentList(SyntaxFactory.SeparatedList(newArgs)).WithoutTrivia()).ToString();
                         }
                         else
                         {
                             name = instance;
                         }
 
-                        ConvertInitializers(syntax.Expressions, name, statements, info.nested);
+                        ITypeSymbol newType = null;
+                        var symbol = semanticModel.GetSymbolInfo(be.Left).Symbol;
+
+                        if (symbol is IPropertySymbol ps) newType = ps.Type;
+                        else if (symbol is IFieldSymbol fs) newType = fs.Type;
+
+                        ConvertInitializers(syntax.Expressions, name, statements, info.nested, newType);
                     }
                     else
                     {
                         if (be.Left is ImplicitElementAccessSyntax indexerKeys)
                         {
+                            var newArgs = new List<ArgumentSyntax>();
+                            foreach (var arg in indexerKeys.ArgumentList.Arguments)
+                            {
+                                if (arg.Expression is PrefixUnaryExpressionSyntax prefix && prefix.OperatorToken.IsKind(SyntaxKind.CaretToken))
+                                {
+                                    string lengthProp = "Length";
+                                    if (type != null)
+                                    {
+                                        if (type.GetMembers("Count").Any()) lengthProp = "Count";
+                                    }
+
+                                    var lengthAccess = SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression,
+                                        SyntaxFactory.ParseExpression(instance), SyntaxFactory.IdentifierName(lengthProp));
+
+                                    var val = prefix.Operand;
+
+                                    var newIdx = SyntaxFactory.BinaryExpression(SyntaxKind.SubtractExpression, lengthAccess, val);
+                                    newArgs.Add(arg.WithExpression(newIdx));
+                                }
+                                else
+                                {
+                                    newArgs.Add((ArgumentSyntax)Visit(arg));
+                                }
+                            }
+
                             be = be.WithLeft(SyntaxFactory.ElementAccessExpression(SyntaxFactory.IdentifierName(instance),
-                                    indexerKeys.ArgumentList.WithoutTrivia()));
+                                    SyntaxFactory.BracketedArgumentList(SyntaxFactory.SeparatedList(newArgs)).WithoutTrivia()));
                         }
                         else
                         {
@@ -2948,7 +3007,8 @@ namespace H5.Translator
                                     SyntaxFactory.IdentifierName(identifier.Identifier.ValueText)));
                         }
 
-                        be = be.WithRight(be.Right.WithoutTrivia());
+                        var right = (ExpressionSyntax)Visit(be.Right);
+                        be = be.WithRight(right.WithoutTrivia());
                         be = be.WithoutTrivia();
 
                         statements.Add(SyntaxFactory.ExpressionStatement(be, SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
