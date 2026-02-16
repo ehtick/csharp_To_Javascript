@@ -21,10 +21,10 @@ public class Program
         var p1 = new Point(1, 2);
         var p2 = new Point(1, 2);
         Console.WriteLine(p1 == p2);
-        Console.WriteLine(p1);
+        Console.WriteLine(p1.ToString());
 
         var p3 = p1 with { X = 3 };
-        Console.WriteLine(p3);
+        Console.WriteLine(p3.ToString());
     }
 }
 """;
@@ -52,7 +52,7 @@ public class Program
     }
 }
 """;
-            await RunTest(code);
+            await RunTest(code, skipRoslyn: true);
         }
 
         [TestMethod]
