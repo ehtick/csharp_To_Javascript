@@ -2350,6 +2350,13 @@ namespace H5.Translator
 
                 classDecl = classDecl.AddMembers(ctor);
 
+                // Add parameterless constructor to avoid H5 emitter issues (duplicate ctor key) if implicit one is generated
+                var defaultCtor = SyntaxFactory.ConstructorDeclaration(node.Identifier)
+                    .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
+                    .WithBody(SyntaxFactory.Block());
+
+                classDecl = classDecl.AddMembers(defaultCtor);
+
                 // Add Deconstruct
                  var deconstructParams = ctorParams.Select(p =>
                     SyntaxFactory.Parameter(p.Identifier).WithType(p.Type).AddModifiers(SyntaxFactory.Token(SyntaxKind.OutKeyword).WithTrailingTrivia(SyntaxFactory.Space))
