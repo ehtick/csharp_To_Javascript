@@ -2388,10 +2388,37 @@ namespace H5.Translator
                     .WithKeyword(SyntaxFactory.Token(SyntaxKind.ClassKeyword).WithTrailingTrivia(SyntaxFactory.Space));
             }
 
+            ArgumentListSyntax baseArgs = null;
+            BaseListSyntax newBaseList = node.BaseList;
+
+            if (node.BaseList != null)
+            {
+                var newTypes = new List<BaseTypeSyntax>();
+                bool changed = false;
+                foreach (var baseType in node.BaseList.Types)
+                {
+                    if (baseType is PrimaryConstructorBaseTypeSyntax pcbt)
+                    {
+                        baseArgs = pcbt.ArgumentList;
+                        newTypes.Add(SyntaxFactory.SimpleBaseType(pcbt.Type).WithLeadingTrivia(pcbt.GetLeadingTrivia()).WithTrailingTrivia(pcbt.GetTrailingTrivia()));
+                        changed = true;
+                    }
+                    else
+                    {
+                        newTypes.Add(baseType);
+                    }
+                }
+
+                if (changed)
+                {
+                    newBaseList = node.BaseList.WithTypes(SyntaxFactory.SeparatedList(newTypes));
+                }
+            }
+
             classDecl = classDecl
                 .WithModifiers(node.Modifiers)
                 .WithTypeParameterList(node.TypeParameterList)
-                .WithBaseList(node.BaseList)
+                .WithBaseList(newBaseList)
                 .WithConstraintClauses(node.ConstraintClauses)
                 .WithAttributeLists(node.AttributeLists)
                 .WithOpenBraceToken(openBrace)
@@ -2445,18 +2472,24 @@ namespace H5.Translator
                 // Add constructor
                 var ctor = SyntaxFactory.ConstructorDeclaration(node.Identifier)
                     .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
-                    .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(ctorParams)))
-                    .WithBody(SyntaxFactory.Block(
-                         ctorParams.Select(p =>
-                             SyntaxFactory.ExpressionStatement(
-                                 SyntaxFactory.AssignmentExpression(
-                                     SyntaxKind.SimpleAssignmentExpression,
-                                     SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(p.Identifier)),
-                                     SyntaxFactory.IdentifierName(p.Identifier)
-                                 )
-                             )
-                         )
-                    ));
+                    .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(ctorParams)));
+
+                if (baseArgs != null)
+                {
+                    ctor = ctor.WithInitializer(SyntaxFactory.ConstructorInitializer(SyntaxKind.BaseConstructorInitializer, baseArgs));
+                }
+
+                ctor = ctor.WithBody(SyntaxFactory.Block(
+                        ctorParams.Select(p =>
+                            SyntaxFactory.ExpressionStatement(
+                                SyntaxFactory.AssignmentExpression(
+                                    SyntaxKind.SimpleAssignmentExpression,
+                                    SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(p.Identifier)),
+                                    SyntaxFactory.IdentifierName(p.Identifier)
+                                )
+                            )
+                        )
+                   ));
 
                 classDecl = classDecl.AddMembers(ctor);
 
@@ -2495,76 +2528,109 @@ namespace H5.Translator
                 printMembersModifiers = printMembersModifiers.Add(SyntaxFactory.Token(SyntaxKind.VirtualKeyword).WithTrailingTrivia(SyntaxFactory.Space));
 
                 var sbType = SyntaxFactory.ParseTypeName("System.Text.StringBuilder");
-                var printMembersBody = new List<StatementSyntax>();
 
-                // builder.Append("Prop = "); builder.Append(this.Prop); ...
-                bool first = true;
-                foreach (var param in node.ParameterList.Parameters)
+                bool synthesizePrintMembers = !node.Members.OfType<MethodDeclarationSyntax>().Any(m => m.Identifier.ValueText == "PrintMembers" && m.ParameterList.Parameters.Count == 1);
+
+                if (synthesizePrintMembers)
                 {
-                    if (!first)
+                    var printMembersBody = new List<StatementSyntax>();
+
+                    // builder.Append("Prop = "); builder.Append(this.Prop); ...
+                    bool first = true;
+                    foreach (var param in node.ParameterList.Parameters)
                     {
+                        if (!first)
+                        {
+                            printMembersBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
+                                SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("builder"), SyntaxFactory.IdentifierName("Append")),
+                                SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(", "))))))));
+                        }
+                        first = false;
+
                         printMembersBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
                             SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("builder"), SyntaxFactory.IdentifierName("Append")),
-                            SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(", "))))))));
+                            SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(param.Identifier.ValueText + " = "))))))));
+
+                        printMembersBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
+                            SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("builder"), SyntaxFactory.IdentifierName("Append")),
+                            SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(param.Identifier))))))));
                     }
-                    first = false;
+                    printMembersBody.Add(SyntaxFactory.ReturnStatement(SyntaxFactory.LiteralExpression(SyntaxKind.TrueLiteralExpression).WithLeadingTrivia(SyntaxFactory.Space)));
 
-                    printMembersBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
-                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("builder"), SyntaxFactory.IdentifierName("Append")),
-                        SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(param.Identifier.ValueText + " = "))))))));
+                    var printMembers = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword).WithTrailingTrivia(SyntaxFactory.Space)), "PrintMembers")
+                        .WithModifiers(printMembersModifiers)
+                        .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Parameter(SyntaxFactory.Identifier("builder").WithLeadingTrivia(SyntaxFactory.Space)).WithType(sbType))))
+                        .WithBody(SyntaxFactory.Block(printMembersBody));
 
-                    printMembersBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
-                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("builder"), SyntaxFactory.IdentifierName("Append")),
-                        SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(param.Identifier))))))));
+                    classDecl = classDecl.AddMembers(printMembers);
                 }
-                printMembersBody.Add(SyntaxFactory.ReturnStatement(SyntaxFactory.LiteralExpression(SyntaxKind.TrueLiteralExpression).WithLeadingTrivia(SyntaxFactory.Space)));
 
-                var printMembers = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword).WithTrailingTrivia(SyntaxFactory.Space)), "PrintMembers")
-                    .WithModifiers(printMembersModifiers)
-                    .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Parameter(SyntaxFactory.Identifier("builder").WithLeadingTrivia(SyntaxFactory.Space)).WithType(sbType))))
-                    .WithBody(SyntaxFactory.Block(printMembersBody));
+                bool synthesizeToString = !node.Members.OfType<MethodDeclarationSyntax>().Any(m => m.Identifier.ValueText == "ToString" && m.ParameterList.Parameters.Count == 0);
 
-                classDecl = classDecl.AddMembers(printMembers);
+                if (synthesizeToString)
+                {
+                    var symbol = semanticModel.GetDeclaredSymbol(node);
+                    if (symbol != null)
+                    {
+                        var currentBase = symbol.BaseType;
+                        while (currentBase != null && currentBase.SpecialType != SpecialType.System_Object)
+                        {
+                            var toStringSym = currentBase.GetMembers("ToString").FirstOrDefault(m => m is IMethodSymbol ms && ms.Parameters.Length == 0) as IMethodSymbol;
+                            if (toStringSym != null)
+                            {
+                                if (toStringSym.IsSealed)
+                                {
+                                    synthesizeToString = false;
+                                }
+                                break;
+                            }
+                            currentBase = currentBase.BaseType;
+                        }
+                    }
+                }
 
-                var toStringBody = new List<StatementSyntax>();
-                // var sb = new StringBuilder();
-                toStringBody.Add(SyntaxFactory.LocalDeclarationStatement(SyntaxFactory.VariableDeclaration(SyntaxFactory.IdentifierName("var").WithTrailingTrivia(SyntaxFactory.Space))
-                    .WithVariables(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.VariableDeclarator("sb").WithInitializer(SyntaxFactory.EqualsValueClause(
-                        SyntaxFactory.ObjectCreationExpression(sbType)
-                        .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space))
-                        .WithArgumentList(SyntaxFactory.ArgumentList())))))));
+                if (synthesizeToString)
+                {
+                    var toStringBody = new List<StatementSyntax>();
+                    // var sb = new StringBuilder();
+                    toStringBody.Add(SyntaxFactory.LocalDeclarationStatement(SyntaxFactory.VariableDeclaration(SyntaxFactory.IdentifierName("var").WithTrailingTrivia(SyntaxFactory.Space))
+                        .WithVariables(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.VariableDeclarator("sb").WithInitializer(SyntaxFactory.EqualsValueClause(
+                            SyntaxFactory.ObjectCreationExpression(sbType)
+                            .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                            .WithArgumentList(SyntaxFactory.ArgumentList())))))));
 
-                // sb.Append("TypeName");
-                toStringBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
-                    SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("sb"), SyntaxFactory.IdentifierName("Append")),
-                    SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(node.Identifier.ValueText))))))));
-
-                // sb.Append(" { ");
-                toStringBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
-                    SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("sb"), SyntaxFactory.IdentifierName("Append")),
-                    SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(" { "))))))));
-
-                // if (PrintMembers(sb)) sb.Append(" ");
-                toStringBody.Add(SyntaxFactory.IfStatement(
-                    SyntaxFactory.InvocationExpression(SyntaxFactory.IdentifierName("PrintMembers"), SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.IdentifierName("sb"))))),
-                    SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
+                    // sb.Append("TypeName");
+                    toStringBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
                         SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("sb"), SyntaxFactory.IdentifierName("Append")),
-                        SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(" ")))))))));
+                        SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(node.Identifier.ValueText))))))));
 
-                // sb.Append("}");
-                toStringBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
-                    SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("sb"), SyntaxFactory.IdentifierName("Append")),
-                    SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal("}"))))))));
+                    // sb.Append(" { ");
+                    toStringBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("sb"), SyntaxFactory.IdentifierName("Append")),
+                        SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(" { "))))))));
 
-                // return sb.ToString();
-                toStringBody.Add(SyntaxFactory.ReturnStatement(SyntaxFactory.InvocationExpression(
-                    SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("sb"), SyntaxFactory.IdentifierName("ToString"))).WithLeadingTrivia(SyntaxFactory.Space)));
+                    // if (PrintMembers(sb)) sb.Append(" ");
+                    toStringBody.Add(SyntaxFactory.IfStatement(
+                        SyntaxFactory.InvocationExpression(SyntaxFactory.IdentifierName("PrintMembers"), SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.IdentifierName("sb"))))),
+                        SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
+                            SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("sb"), SyntaxFactory.IdentifierName("Append")),
+                            SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(" ")))))))));
 
-                var toString = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.StringKeyword).WithTrailingTrivia(SyntaxFactory.Space)), "ToString")
-                    .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)).Add(SyntaxFactory.Token(SyntaxKind.OverrideKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
-                    .WithBody(SyntaxFactory.Block(toStringBody));
+                    // sb.Append("}");
+                    toStringBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("sb"), SyntaxFactory.IdentifierName("Append")),
+                        SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal("}"))))))));
 
-                classDecl = classDecl.AddMembers(toString);
+                    // return sb.ToString();
+                    toStringBody.Add(SyntaxFactory.ReturnStatement(SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("sb"), SyntaxFactory.IdentifierName("ToString"))).WithLeadingTrivia(SyntaxFactory.Space)));
+
+                    var toString = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.StringKeyword).WithTrailingTrivia(SyntaxFactory.Space)), "ToString")
+                        .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)).Add(SyntaxFactory.Token(SyntaxKind.OverrideKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
+                        .WithBody(SyntaxFactory.Block(toStringBody));
+
+                    classDecl = classDecl.AddMembers(toString);
+                }
             }
 
             // Add Clone method for H5 support (required for 'with' expressions)
