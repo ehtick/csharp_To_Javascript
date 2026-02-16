@@ -491,6 +491,23 @@ namespace H5.Translator
             throw new NotSupportedException(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Ref returns and locals are not supported", semanticModel.SyntaxTree.FilePath, node.ToString()));
         }
 
+        public override SyntaxNode VisitForEachStatement(ForEachStatementSyntax node)
+        {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitForEachStatement(node);
+            }
+
+            var info = semanticModel.GetForEachStatementInfo(node);
+            if (info.GetEnumeratorMethod != null && info.GetEnumeratorMethod.IsExtensionMethod)
+            {
+                var mapped = semanticModel.SyntaxTree.GetLineSpan(node.Span);
+                throw new NotSupportedException(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Extension GetEnumerator is not supported", semanticModel.SyntaxTree.FilePath, node.ToString()));
+            }
+
+            return base.VisitForEachStatement(node);
+        }
+
         public override SyntaxNode VisitRefType(RefTypeSyntax node)
         {
             node = (RefTypeSyntax)base.VisitRefType(node);
@@ -648,7 +665,7 @@ namespace H5.Translator
 
             if (type.IsTupleType)
             {
-                var createExpression = SyntaxFactory.ObjectCreationExpression(SyntaxFactory.GenericName(SyntaxFactory.Identifier("System.ValueTuple"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types))));
+                var createExpression = SyntaxFactory.ObjectCreationExpression(SyntaxFactory.QualifiedName(SyntaxFactory.IdentifierName("System"), SyntaxFactory.GenericName(SyntaxFactory.Identifier("ValueTuple"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types)))));
                 var argExpressions = new List<ArgumentSyntax>();
 
                 foreach (var arg in node.Arguments)
@@ -673,7 +690,7 @@ namespace H5.Translator
                 types.Add(el.Type);
             }
 
-            var newType = SyntaxFactory.GenericName(SyntaxFactory.Identifier("System.ValueTuple"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types)));
+            var newType = SyntaxFactory.QualifiedName(SyntaxFactory.IdentifierName("System"), SyntaxFactory.GenericName(SyntaxFactory.Identifier("ValueTuple"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types))));
 
             return newType.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia()); ;
         }
@@ -1495,7 +1512,28 @@ namespace H5.Translator
 
         public override SyntaxNode VisitParameter(ParameterSyntax node)
         {
+            var originalNode = node;
             node = (ParameterSyntax)base.VisitParameter(node);
+
+            // Fix for C# 13/14 inferred type for ref/out parameters in lambdas: (ref x) => ...
+            // NRefactory 5 requires explicit type: (ref int x) => ...
+            if (node.Type == null && originalNode.Parent is ParameterListSyntax && originalNode.Parent.Parent is LambdaExpressionSyntax)
+            {
+                bool hasRef = node.Modifiers.Any(m => m.IsKind(SyntaxKind.RefKeyword));
+                bool hasOut = node.Modifiers.Any(m => m.IsKind(SyntaxKind.OutKeyword));
+                // 'in' is handled below, but we need the type for it too if it's missing
+                bool hasIn = node.Modifiers.Any(m => m.IsKind(SyntaxKind.InKeyword));
+
+                if (hasRef || hasOut || hasIn)
+                {
+                    var symbol = semanticModel.GetDeclaredSymbol(originalNode);
+                    if (symbol != null)
+                    {
+                        var typeSyntax = SyntaxHelper.GenerateTypeSyntax(symbol.Type, semanticModel, originalNode.SpanStart, this);
+                        node = node.WithType(typeSyntax).WithIdentifier(node.Identifier.WithLeadingTrivia(SyntaxFactory.Space));
+                    }
+                }
+            }
 
             var idx = node.Modifiers.IndexOf(SyntaxKind.InKeyword);
             if (idx > -1)
@@ -2204,6 +2242,31 @@ namespace H5.Translator
                 return base.VisitIdentifierName(node);
             }
 
+            // Check if nint/nuint are used as identifiers (variables/members)
+            if (node.Identifier.ValueText == "nint" || node.Identifier.ValueText == "nuint")
+            {
+                var sym = semanticModel.GetSymbolInfo(node).Symbol;
+                if (sym == null || !(sym.Kind == SymbolKind.Local || sym.Kind == SymbolKind.Field || sym.Kind == SymbolKind.Parameter || sym.Kind == SymbolKind.Property || sym.Kind == SymbolKind.Method))
+                {
+                    if (node.Identifier.ValueText == "nint")
+                    {
+                        return SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.IntKeyword))
+                            .WithLeadingTrivia(node.GetLeadingTrivia())
+                            .WithTrailingTrivia(node.GetTrailingTrivia());
+                    }
+                    else if (node.Identifier.ValueText == "nuint")
+                    {
+                        return SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.UIntKeyword))
+                            .WithLeadingTrivia(node.GetLeadingTrivia())
+                            .WithTrailingTrivia(node.GetTrailingTrivia());
+                    }
+                }
+            }
+            {
+                // Detached node
+                return base.VisitIdentifierName(node);
+            }
+
             ISymbol symbol = null;
             try
             {
@@ -2462,6 +2525,11 @@ namespace H5.Translator
             node = (PropertyDeclarationSyntax)base.VisitPropertyDeclaration(node);
             var newNode = node;
 
+            if (newNode.Modifiers.IndexOf(SyntaxKind.RequiredKeyword) > -1)
+            {
+                newNode = newNode.WithModifiers(newNode.Modifiers.RemoveAt(newNode.Modifiers.IndexOf(SyntaxKind.RequiredKeyword)));
+            }
+
             if (newNode.Modifiers.IndexOf(SyntaxKind.ReadOnlyKeyword) > -1)
             {
                 newNode = newNode.WithModifiers(newNode.Modifiers.RemoveAt(newNode.Modifiers.IndexOf(SyntaxKind.ReadOnlyKeyword)));
@@ -2552,6 +2620,11 @@ namespace H5.Translator
         public override SyntaxNode VisitFieldDeclaration(FieldDeclarationSyntax node)
         {
             node = base.VisitFieldDeclaration(node) as FieldDeclarationSyntax;
+
+            if (node.Modifiers.IndexOf(SyntaxKind.RequiredKeyword) > -1)
+            {
+                node = node.WithModifiers(node.Modifiers.RemoveAt(node.Modifiers.IndexOf(SyntaxKind.RequiredKeyword)));
+            }
 
             if (node.Modifiers.IndexOf(SyntaxKind.PrivateKeyword) > -1 && node.Modifiers.IndexOf(SyntaxKind.ProtectedKeyword) > -1)
             {

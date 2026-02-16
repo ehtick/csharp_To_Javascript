@@ -144,7 +144,10 @@ public class Program
         Console.WriteLine(f(true));
         Console.WriteLine(f(false));
 
-        Action<string> a = (ref string s) => s = s.ToUpper(); // Ref parameter? H5 might struggle with ref in lambdas yet
+        var a = (ref string s) => s = s.ToUpper();
+        string val = "hello";
+        a(ref val);
+        Console.WriteLine(val);
     }
 }
 """;
@@ -169,7 +172,7 @@ public class Program
 """;
             // Global usings are usually in a separate file or top of file.
             // This might fail if the compiler expects them in a specific way or if Roslyn script doesn't handle them well inside a submission.
-            await RunTest(code, skipRoslyn: true);
+            await RunTestExpectingError(code, "Global usings are not supported");
         }
     }
 }

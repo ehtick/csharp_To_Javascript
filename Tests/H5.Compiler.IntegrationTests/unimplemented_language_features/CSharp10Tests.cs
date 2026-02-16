@@ -232,24 +232,6 @@ public class Program
         }
 
         [TestMethod]
-        public async Task GlobalUsings()
-        {
-            var code = """
-global using System;
-global using static System.Math;
-
-public class Program
-{
-    public static void Main()
-    {
-        Console.WriteLine(Abs(-10));
-    }
-}
-""";
-            await RunTestExpectingError(code, "Global usings are not supported");
-        }
-
-        [TestMethod]
         public async Task AsyncMethodBuilderAttribute()
         {
             var code = """
