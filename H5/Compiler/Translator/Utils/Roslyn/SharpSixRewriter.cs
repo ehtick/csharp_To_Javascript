@@ -2247,14 +2247,27 @@ namespace H5.Translator
             // Positional records: record Person(string Name, int Age);
             // -> class Person { public string Name { get; init; } public int Age { get; init; } ... ctor ... }
 
+            var openBrace = node.OpenBraceToken;
+            if (openBrace.IsKind(SyntaxKind.None))
+            {
+                openBrace = SyntaxFactory.Token(SyntaxKind.OpenBraceToken).WithTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed);
+            }
+
+            var closeBrace = node.CloseBraceToken;
+            if (closeBrace.IsKind(SyntaxKind.None))
+            {
+                closeBrace = SyntaxFactory.Token(SyntaxKind.CloseBraceToken).WithLeadingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed);
+            }
+
             var classDecl = SyntaxFactory.ClassDeclaration(node.Identifier)
+                .WithKeyword(SyntaxFactory.Token(SyntaxKind.ClassKeyword).WithTrailingTrivia(SyntaxFactory.Space))
                 .WithModifiers(node.Modifiers)
                 .WithTypeParameterList(node.TypeParameterList)
                 .WithBaseList(node.BaseList)
                 .WithConstraintClauses(node.ConstraintClauses)
                 .WithAttributeLists(node.AttributeLists)
-                .WithOpenBraceToken(node.OpenBraceToken)
-                .WithCloseBraceToken(node.CloseBraceToken)
+                .WithOpenBraceToken(openBrace)
+                .WithCloseBraceToken(closeBrace)
                 .WithMembers(node.Members);
 
             if (node.ParameterList != null)
@@ -2276,7 +2289,7 @@ namespace H5.Translator
                     // If I write record R(int x), the property is named 'x'. It does NOT auto-capitalize.
 
                     var property = SyntaxFactory.PropertyDeclaration(param.Type, param.Identifier)
-                        .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
+                        .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
                         .WithAccessorList(SyntaxFactory.AccessorList(SyntaxFactory.List(new[]
                         {
                             SyntaxFactory.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)),
@@ -2303,7 +2316,7 @@ namespace H5.Translator
 
                 // Add constructor
                 var ctor = SyntaxFactory.ConstructorDeclaration(node.Identifier)
-                    .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
+                    .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
                     .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(ctorParams)))
                     .WithBody(SyntaxFactory.Block(
                          ctorParams.Select(p =>
@@ -2321,7 +2334,7 @@ namespace H5.Translator
 
                 // Add Deconstruct
                  var deconstructParams = ctorParams.Select(p =>
-                    SyntaxFactory.Parameter(p.Identifier).WithType(p.Type).AddModifiers(SyntaxFactory.Token(SyntaxKind.OutKeyword))
+                    SyntaxFactory.Parameter(p.Identifier).WithType(p.Type).AddModifiers(SyntaxFactory.Token(SyntaxKind.OutKeyword).WithTrailingTrivia(SyntaxFactory.Space))
                 );
 
                 var deconstructBody = ctorParams.Select(p =>
@@ -2334,15 +2347,51 @@ namespace H5.Translator
                     )
                 );
 
-                var deconstruct = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword)), "Deconstruct")
-                    .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
+                var deconstruct = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword).WithTrailingTrivia(SyntaxFactory.Space)), "Deconstruct")
+                    .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
                     .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(deconstructParams)))
                     .WithBody(SyntaxFactory.Block(deconstructBody));
 
                 classDecl = classDecl.AddMembers(deconstruct);
             }
 
-            return VisitClassDeclaration(classDecl);
+            // return VisitClassDeclaration(classDecl);
+            // We cannot call VisitClassDeclaration because classDecl is a synthesized node
+            // and semanticModel.GetDeclaredSymbol(classDecl) would fail.
+            // Instead, we inline the logic here, using 'node' (the record) for symbol resolution.
+
+            currentType.Push(semanticModel.GetDeclaredSymbol(node));
+            var oldIndex = IndexInstance;
+            IndexInstance = 0;
+            var old = fields;
+            fields = new List<MemberDeclarationSyntax>();
+
+            var c = base.VisitClassDeclaration(classDecl) as ClassDeclarationSyntax;
+
+            if (c != null && fields.Count > 0)
+            {
+                var list = c.Members.ToList();
+                var arr = fields.ToArray();
+                var trivias = c.CloseBraceToken.LeadingTrivia;
+                trivias = trivias.Insert(0, SyntaxFactory.Whitespace("\n")).Add(SyntaxFactory.Whitespace("\n"));
+                arr[0] = arr[0].WithLeadingTrivia(trivias);
+                c = c.WithCloseBraceToken(c.CloseBraceToken.WithLeadingTrivia(null));
+                list.AddRange(arr);
+                c = c.WithMembers(SyntaxFactory.List(list));
+            }
+
+            if (c.Modifiers.IndexOf(SyntaxKind.PrivateKeyword) > -1 && c.Modifiers.IndexOf(SyntaxKind.ProtectedKeyword) > -1)
+            {
+                c = c.WithModifiers(c.Modifiers.Replace(c.Modifiers[c.Modifiers.IndexOf(SyntaxKind.ProtectedKeyword)], SyntaxFactory.Token(SyntaxKind.InternalKeyword).WithTrailingTrivia(SyntaxFactory.Whitespace(" "))));
+                c = c.WithModifiers(c.Modifiers.Replace(c.Modifiers[c.Modifiers.IndexOf(SyntaxKind.PrivateKeyword)], SyntaxFactory.Token(SyntaxKind.ProtectedKeyword).WithTrailingTrivia(SyntaxFactory.Whitespace(" "))));
+                c = c.WithAttributeLists(c.AttributeLists.Add(SyntaxFactory.AttributeList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("H5.PrivateProtectedAttribute"))))));
+            }
+
+            fields = old;
+            IndexInstance = oldIndex;
+            currentType.Pop();
+
+            return c;
         }
 
         public override SyntaxNode VisitStackAllocArrayCreationExpression(StackAllocArrayCreationExpressionSyntax node)
