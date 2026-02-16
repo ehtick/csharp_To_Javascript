@@ -2443,10 +2443,6 @@ namespace H5.Translator
                     }
                 }
             }
-            {
-                // Detached node
-                return base.VisitIdentifierName(node);
-            }
 
             ISymbol symbol = null;
             try
