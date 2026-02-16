@@ -186,7 +186,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task FileLocalTypes()
         {
             var code = """
@@ -210,7 +209,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task GenericMath()
         {
             var code = """
@@ -243,7 +241,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task Utf8StringLiterals()
         {
             var code = """
@@ -262,7 +259,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task PatternMatchSpanChar()
         {
             var code = """
@@ -380,7 +376,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task NumericIntPtr()
         {
             var code = """
@@ -400,7 +395,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task RefFields()
         {
             var code = """
@@ -426,7 +420,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task ScopedRef()
         {
             var code = """

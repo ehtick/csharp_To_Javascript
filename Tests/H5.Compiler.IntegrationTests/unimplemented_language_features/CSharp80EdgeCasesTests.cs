@@ -167,7 +167,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Missing IAsyncDisposable and ValueTask in H5 environment")]
         public async Task UsingDeclarations_Await()
         {
             var code = """

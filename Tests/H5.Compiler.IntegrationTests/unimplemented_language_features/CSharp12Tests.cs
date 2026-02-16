@@ -7,7 +7,6 @@ namespace H5.Compiler.IntegrationTests.UnimplementedLanguageFeatures
     public class CSharp12Tests : IntegrationTestBase
     {
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task PrimaryConstructors()
         {
             var code = """
@@ -34,25 +33,11 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task InlineArrays()
         {
             var code = """
 using System;
 using System.Runtime.CompilerServices;
-
-// InlineArrayAttribute needs to be available
-/*
-namespace System.Runtime.CompilerServices
-{
-    [AttributeUsage(AttributeTargets.Struct, AllowMultiple = false)]
-    internal sealed class InlineArrayAttribute : Attribute
-    {
-        public InlineArrayAttribute(int length) { Length = length; }
-        public int Length { get; }
-    }
-}
-*/
 
 [InlineArray(10)]
 public struct Buffer10
@@ -74,25 +59,11 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task ExperimentalAttribute()
         {
             var code = """
 using System;
 using System.Diagnostics.CodeAnalysis;
-
-// Requires System.Diagnostics.CodeAnalysis.ExperimentalAttribute
-/*
-namespace System.Diagnostics.CodeAnalysis
-{
-    [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Module | AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Enum | AttributeTargets.Constructor | AttributeTargets.Method | AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Event | AttributeTargets.Interface | AttributeTargets.Delegate, Inherited = false)]
-    public sealed class ExperimentalAttribute : Attribute
-    {
-        public ExperimentalAttribute(string diagnosticId) { DiagnosticId = diagnosticId; }
-        public string DiagnosticId { get; }
-    }
-}
-*/
 
 [Experimental("EXP001")]
 public class ExperimentalFeature
