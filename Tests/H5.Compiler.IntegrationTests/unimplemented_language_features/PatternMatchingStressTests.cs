@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 using H5.Compiler.IntegrationTests;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace H5.Compiler.IntegrationTests.unimplemented_language_features
+namespace H5.Compiler.IntegrationTests.UnimplementedLanguageFeatures
 {
     [TestClass]
     public class PatternMatchingStressTests : IntegrationTestBase
