@@ -1518,6 +1518,23 @@ namespace H5.Translator
                 }
             }
 
+            bool hasRefModifier = node.Modifiers.Any(m => m.IsKind(SyntaxKind.RefKeyword));
+            bool hasReadOnlyModifier = node.Modifiers.Any(m => m.IsKind(SyntaxKind.ReadOnlyKeyword));
+
+            if (hasRefModifier && hasReadOnlyModifier)
+            {
+                var newModifiers = node.Modifiers.Where(m => !m.IsKind(SyntaxKind.RefKeyword) && !m.IsKind(SyntaxKind.ReadOnlyKeyword));
+                node = node.WithModifiers(SyntaxFactory.TokenList(newModifiers));
+
+                var type = node.Type;
+                var refType = SyntaxFactory.QualifiedName(
+                   SyntaxFactory.ParseName("global::H5"),
+                   SyntaxFactory.GenericName(
+                       SyntaxFactory.Identifier("Ref"),
+                       SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(type))));
+                node = node.WithType(refType.NormalizeWhitespace());
+            }
+
             var idx = node.Modifiers.IndexOf(SyntaxKind.InKeyword);
             if (idx > -1)
             {
@@ -1622,6 +1639,7 @@ namespace H5.Translator
                     }
                 }
             }
+
             var isParam = parameter != null && !SyntaxHelper.IsAnonymous(parameter.Type);
             var parent = isParam && parameter.IsParams ? (InvocationExpressionSyntax)node.Parent.Parent : null;
             var pos = node.Expression.GetLocation().SourceSpan.Start;
@@ -1669,14 +1687,14 @@ namespace H5.Translator
             bool isRefInvocation = node.RefKindKeyword.IsKind(SyntaxKind.RefKeyword) && node.Expression is InvocationExpressionSyntax;
             bool isIn = node.RefKindKeyword.IsKind(SyntaxKind.InKeyword);
 
-            if (!isIn && parameter != null && parameter.RefKind == RefKind.In)
+            if (!isIn && parameter != null && (parameter.RefKind == RefKind.In || parameter.RefKind == RefKind.RefReadOnly))
             {
                 isIn = true;
             }
 
             if (isIn)
             {
-                if (expressionSymbol is IParameterSymbol ps && ps.RefKind == RefKind.In)
+                if (expressionSymbol is IParameterSymbol ps && (ps.RefKind == RefKind.In || ps.RefKind == RefKind.RefReadOnly))
                 {
                     node = node.WithRefKindKeyword(SyntaxFactory.Token(SyntaxKind.None));
                 }
