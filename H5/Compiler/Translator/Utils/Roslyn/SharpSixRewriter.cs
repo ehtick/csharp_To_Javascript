@@ -359,6 +359,35 @@ namespace H5.Translator
             }
         }
 
+        private static ITypeSymbol GetCollectionElementType(ITypeSymbol type)
+        {
+            if (type is IArrayTypeSymbol arrayType)
+            {
+                return arrayType.ElementType;
+            }
+
+            if (type.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T && type is INamedTypeSymbol named && named.TypeArguments.Length > 0)
+            {
+                return named.TypeArguments[0];
+            }
+
+            foreach (var iface in type.AllInterfaces)
+            {
+                if (iface.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T)
+                {
+                    return iface.TypeArguments[0];
+                }
+            }
+
+            if (type is INamedTypeSymbol namedType && (namedType.Name == "Span" || namedType.Name == "ReadOnlySpan") &&
+                namedType.ContainingNamespace?.ToDisplayString() == "System" && namedType.TypeArguments.Length == 1)
+            {
+                return namedType.TypeArguments[0];
+            }
+
+            return null;
+        }
+
         private static bool IsExpandedForm(SemanticModel semanticModel, InvocationExpressionSyntax node, IMethodSymbol method)
         {
             var parameters = method.Parameters;
@@ -387,11 +416,18 @@ namespace H5.Translator
             if (actualArgumentCount == parameters.Length - 1)
                 return true;    // Empty param array
 
-            var lastType = semanticModel.GetTypeInfo(arguments[arguments.Count - 1].Expression).ConvertedType;
-            if (SymbolEqualityComparer.Default.Equals(((IArrayTypeSymbol)parameters[parameters.Length - 1].Type).ElementType, lastType))
-                return true;    // A param array needs to be created
+            var lastArg = arguments[arguments.Count - 1];
+            var lastType = semanticModel.GetTypeInfo(lastArg.Expression).ConvertedType;
+            var paramType = parameters[parameters.Length - 1].Type;
 
-            return false;
+            // Check if normal form is applicable
+            var conversion = semanticModel.ClassifyConversion(lastArg.Expression, paramType);
+            if (conversion.Exists && conversion.IsImplicit)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         public override SyntaxNode VisitCaseSwitchLabel(CaseSwitchLabelSyntax node)
@@ -1265,7 +1301,7 @@ namespace H5.Translator
                 var pType = parameter.Type;
                 if (parameter.IsParams && IsExpandedForm(semanticModel, parent, method))
                 {
-                    pType = ((IArrayTypeSymbol)parameter.Type).ElementType;
+                    pType = GetCollectionElementType(parameter.Type);
                 }
 
                 if (node.Expression is CastExpressionSyntax && SymbolEqualityComparer.Default.Equals(type, pType) || parameter.RefKind != RefKind.None)
@@ -1372,7 +1408,61 @@ namespace H5.Translator
             var conditionalParent = node.GetParent<ConditionalAccessExpressionSyntax>();
             var pos = node.GetLocation().SourceSpan.Start;
 
+            var originalNode = node;
             node = (InvocationExpressionSyntax)base.VisitInvocationExpression(node);
+
+            // Handle params collection expansion (C# 13)
+            if (method != null && method.Parameters.Length > 0)
+            {
+                var lastParam = method.Parameters[method.Parameters.Length - 1];
+                if (lastParam.IsParams && !(lastParam.Type is IArrayTypeSymbol) && IsExpandedForm(semanticModel, originalNode, method))
+                {
+                    var elementType = GetCollectionElementType(lastParam.Type);
+                    if (elementType != null)
+                    {
+                        var paramsIndex = method.Parameters.Length - 1;
+                        var explicitArgsCount = node.ArgumentList.Arguments.Count;
+
+                        if (paramsIndex <= explicitArgsCount)
+                        {
+                            var newArgs = new List<ArgumentSyntax>();
+                            for (int i = 0; i < paramsIndex; i++)
+                            {
+                                newArgs.Add(node.ArgumentList.Arguments[i]);
+                            }
+
+                            var collectedArgs = new List<ExpressionSyntax>();
+                            for (int i = paramsIndex; i < explicitArgsCount; i++)
+                            {
+                                collectedArgs.Add(node.ArgumentList.Arguments[i].Expression);
+                            }
+
+                            var arrayTypeSyntax = SyntaxHelper.GenerateTypeSyntax(elementType, semanticModel, originalNode.SpanStart, this);
+                            var arrayType = SyntaxFactory.ArrayType(arrayTypeSyntax)
+                                .WithRankSpecifiers(SyntaxFactory.SingletonList(SyntaxFactory.ArrayRankSpecifier(SyntaxFactory.SingletonSeparatedList<ExpressionSyntax>(SyntaxFactory.OmittedArraySizeExpression()))));
+
+                            var arrayCreation = SyntaxFactory.ArrayCreationExpression(arrayType)
+                               .WithInitializer(SyntaxFactory.InitializerExpression(SyntaxKind.ArrayInitializerExpression, SyntaxFactory.SeparatedList(collectedArgs)))
+                               .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space));
+
+                            ExpressionSyntax paramsArgument = arrayCreation;
+
+                            // If the params parameter type is NOT an array, wrap the array in the collection constructor
+                            if (lastParam.Type.TypeKind != TypeKind.Interface && lastParam.Type.TypeKind != TypeKind.Array)
+                            {
+                                var collectionTypeSyntax = SyntaxHelper.GenerateTypeSyntax(lastParam.Type, semanticModel, originalNode.SpanStart, this);
+                                paramsArgument = SyntaxFactory.ObjectCreationExpression(collectionTypeSyntax)
+                                    .WithArgumentList(SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(arrayCreation))))
+                                    .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space));
+                            }
+
+                            newArgs.Add(SyntaxFactory.Argument(paramsArgument));
+                            node = node.WithArgumentList(SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(newArgs)));
+                        }
+                    }
+                }
+            }
+
             if (node.Expression is IdentifierNameSyntax syntax && syntax.Identifier.Text == "nameof")
             {
                 string name = SyntaxHelper.GetSymbolName(node, si, costValue, semanticModel);
