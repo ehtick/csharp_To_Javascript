@@ -156,5 +156,35 @@ public class Program
 """;
             await RunTest(code);
         }
+
+        [TestMethod]
+        public async Task GenericOptionalParamsInLambdas()
+        {
+            var code = """
+using System;
+
+public class Program
+{
+    public static void Main()
+    {
+        Run<MyClass>(new MyClass());
+    }
+
+    public static void Run<T>(T val) where T : class, new()
+    {
+        var f = (T x = null) => x ?? new T();
+
+        var v1 = f(); // null -> new T()
+        Console.WriteLine(v1 != null);
+
+        var v2 = f(val); // val
+        Console.WriteLine(v2 == val);
+    }
+}
+
+public class MyClass { }
+""";
+            await RunTest(code);
+        }
     }
 }
