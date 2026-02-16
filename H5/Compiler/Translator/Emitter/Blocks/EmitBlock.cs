@@ -431,12 +431,6 @@ namespace H5.Translator
             if (Emitter.AssemblyInfo.EnableCache)
             {
                 cachedEmittedData = LoadCache();
-
-                //BUG !!!
-                //RFO: It's an assumption that only the config affects the end-result. Need to test what else could possibly affect it, and ignore if anything changed.
-                //     THERE IS ALSO A POSSIBLE PROBLEMATIC ISSUE WITH THE ORDER THAT TYPES METHODS ARE EMITTED.
-                //     Example: ctor vs. ctor$1, which will break this assumption and lead to bad-code being emitted when reusing cached code
-
                 var configHash = JsonConvert.SerializeObject(Emitter.Translator.AssemblyInfo).Hash128();
 
                 foreach (var reference in Emitter.Translator.References.OrderBy(r => r.MainModule.FileName))
@@ -454,75 +448,83 @@ namespace H5.Translator
 
                 configHash = Hashes.Combine(configHash, $"{context.Compiler.Version}/{context.H5.Version}".Hash128());
 
-                cachedEmittedData.ClearIfConfigHashChanged(configHash);
 
-                if (cachedEmittedData.ConfigHash == configHash)
+                if (Emitter.Translator.Rebuild)
                 {
-                    foreach(var file in Emitter.SourceFiles)
-                    {
-                        var fileInfo = new FileInfo(file);
-                        var hash = ComputeFileHash(file);
+                    cachedEmittedData.ClearIfConfigHashChanged(configHash, force: true);
+                }
+                else
+                {
+                    cachedEmittedData.ClearIfConfigHashChanged(configHash);
 
-                        if (cachedEmittedData.FileInfo.TryGetValue(file, out var prevInfo))
+                    if (cachedEmittedData.ConfigHash == configHash)
+                    {
+                        foreach (var file in Emitter.SourceFiles)
                         {
-                            if (prevInfo.Hash != hash)
+                            var fileInfo = new FileInfo(file);
+                            var hash = ComputeFileHash(file);
+
+                            if (cachedEmittedData.FileInfo.TryGetValue(file, out var prevInfo))
+                            {
+                                if (prevInfo.Hash != hash)
+                                {
+                                    changedFiles.Add(file);
+                                }
+                            }
+                            else
                             {
                                 changedFiles.Add(file);
                             }
                         }
-                        else
-                        {
-                            changedFiles.Add(file);
-                        }
-                    }
 
-                    var reverseDeps = new Dictionary<string, HashSet<string>>();
-                    foreach(var kvp in cachedEmittedData.Dependencies)
-                    {
-                        var dependentFile = kvp.Key;
-                        foreach(var referencedFile in kvp.Value)
+                        var reverseDeps = new Dictionary<string, HashSet<string>>();
+                        foreach (var kvp in cachedEmittedData.Dependencies)
                         {
-                            if (!reverseDeps.TryGetValue(referencedFile, out var set))
+                            var dependentFile = kvp.Key;
+                            foreach (var referencedFile in kvp.Value)
                             {
-                                set = new HashSet<string>();
-                                reverseDeps[referencedFile] = set;
-                            }
-                            set.Add(dependentFile);
-                        }
-                    }
-
-                    var queue = new Queue<string>(changedFiles);
-                    while(queue.Count > 0)
-                    {
-                        var changed = queue.Dequeue();
-                        invalidationList.Add(changed);
-
-                        if (reverseDeps.TryGetValue(changed, out var dependents))
-                        {
-                            foreach(var dep in dependents)
-                            {
-                                if (!invalidationList.Contains(dep) && !changedFiles.Contains(dep))
+                                if (!reverseDeps.TryGetValue(referencedFile, out var set))
                                 {
-                                    invalidationList.Add(dep);
-                                    queue.Enqueue(dep);
+                                    set = new HashSet<string>();
+                                    reverseDeps[referencedFile] = set;
+                                }
+                                set.Add(dependentFile);
+                            }
+                        }
+
+                        var queue = new Queue<string>(changedFiles);
+                        while (queue.Count > 0)
+                        {
+                            var changed = queue.Dequeue();
+                            invalidationList.Add(changed);
+
+                            if (reverseDeps.TryGetValue(changed, out var dependents))
+                            {
+                                foreach (var dep in dependents)
+                                {
+                                    if (!invalidationList.Contains(dep) && !changedFiles.Contains(dep))
+                                    {
+                                        invalidationList.Add(dep);
+                                        queue.Enqueue(dep);
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    foreach(var file in invalidationList)
-                    {
-                        Logger.ZLogInformation("Invalidating file: {0}", file);
-                        cachedEmittedData.CachedEmittedTypesPerFile.Remove(file);
-                        cachedEmittedData.Dependencies.Remove(file);
-                    }
+                        foreach (var file in invalidationList)
+                        {
+                            Logger.ZLogInformation("Invalidating file: {0}", file);
+                            cachedEmittedData.CachedEmittedTypesPerFile.Remove(file);
+                            cachedEmittedData.Dependencies.Remove(file);
+                        }
 
-                    // Update FileInfo for all source files to current state so next run has correct info
-                    foreach(var file in Emitter.SourceFiles)
-                    {
-                         var fileInfo = new FileInfo(file);
-                         var hash = ComputeFileHash(file);
-                         cachedEmittedData.FileInfo[file] = new CacheFileInfo { Hash = hash, Size = fileInfo.Length, Timestamp = (DateTimeOffset)fileInfo.LastWriteTimeUtc };
+                        // Update FileInfo for all source files to current state so next run has correct info
+                        foreach (var file in Emitter.SourceFiles)
+                        {
+                            var fileInfo = new FileInfo(file);
+                            var hash = ComputeFileHash(file);
+                            cachedEmittedData.FileInfo[file] = new CacheFileInfo { Hash = hash, Size = fileInfo.Length, Timestamp = (DateTimeOffset)fileInfo.LastWriteTimeUtc };
+                        }
                     }
                 }
             }

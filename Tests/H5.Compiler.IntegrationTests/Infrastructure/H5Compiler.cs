@@ -273,8 +273,8 @@ namespace H5.Compiler.IntegrationTests
                 }
             }
 
-            var sb = new System.Text.StringBuilder();
-            bool polyfillWritten = false;
+                var sb = new System.Text.StringBuilder();
+                bool polyfillWritten = false;
             foreach (var file in sortedFiles)
             {
                 sb.AppendLine($"// File: {file.Key}");
@@ -282,90 +282,94 @@ namespace H5.Compiler.IntegrationTests
                 sb.AppendLine();
 
                 var name = System.IO.Path.GetFileName(file.Key).ToLowerInvariant();
-                if (!polyfillWritten && (name == "h5.js" || name == "h5.core.js"))
+
+                if (false) //Left the polyfill code here as an example for future needs. The polyfills below are not needed anymore
                 {
-                    // Inject H5.toPromise polyfill because tests run against NuGet version of h5.js which lacks it.
-                    // We inject it after the library is loaded but before user code (which comes later in sortedFiles).
-                    sb.AppendLine(@"
-    H5.toPromise = function (awaitable) {
-        if (!awaitable) {
-            return Promise.resolve(awaitable);
-        }
+                    if (!polyfillWritten && (name == "h5.js" || name == "h5.core.js"))
+                    {
+                        // Inject H5.toPromise polyfill because tests run against NuGet version of h5.js which lacks it.
+                        // We inject it after the library is loaded but before user code (which comes later in sortedFiles).
+                        sb.AppendLine(@"
+        H5.toPromise = function (awaitable) {
+            if (!awaitable) {
+                return Promise.resolve(awaitable);
+            }
 
-        if (awaitable instanceof Promise || typeof awaitable.then === 'function') {
-            return awaitable;
-        }
+            if (awaitable instanceof Promise || typeof awaitable.then === 'function') {
+                return awaitable;
+            }
 
-        if (H5.is(awaitable, System.Threading.Tasks.Task) || (awaitable && typeof awaitable.continueWith === 'function')) {
-            return new Promise(function (resolve, reject) {
-                awaitable.continueWith(function (t) {
-                    if (t.isFaulted()) {
-                        var ex = t.exception;
-                        if (ex && ex.innerExceptions && ex.innerExceptions.Count > 0) {
-                             reject(ex.innerExceptions.getItem(0));
+            if (H5.is(awaitable, System.Threading.Tasks.Task) || (awaitable && typeof awaitable.continueWith === 'function')) {
+                return new Promise(function (resolve, reject) {
+                    awaitable.continueWith(function (t) {
+                        if (t.isFaulted()) {
+                            var ex = t.exception;
+                            if (ex && ex.innerExceptions && ex.innerExceptions.Count > 0) {
+                                 reject(ex.innerExceptions.getItem(0));
+                            } else {
+                                 reject(ex);
+                            }
+                        } else if (t.isCanceled()) {
+                             reject(new System.Threading.Tasks.TaskCanceledException.$ctor3(t));
                         } else {
-                             reject(ex);
+                            resolve(t.getAwaitedResult ? t.getAwaitedResult() : t.getResult());
                         }
-                    } else if (t.isCanceled()) {
-                         reject(new System.Threading.Tasks.TaskCanceledException.$ctor3(t));
-                    } else {
-                        resolve(t.getAwaitedResult ? t.getAwaitedResult() : t.getResult());
-                    }
+                    });
                 });
-            });
-        }
+            }
 
-        if (typeof awaitable.getAwaiter === 'function') {
-             var awaiter = awaitable.getAwaiter();
-             if (awaiter.isCompleted()) {
-                 return Promise.resolve(awaiter.getResult());
-             }
-             return new Promise(function(resolve, reject) {
-                 var onCompleted = awaiter.onCompleted || awaiter.continueWith;
-                 if (typeof onCompleted === 'function') {
-                     onCompleted.call(awaiter, function() {
-                         try {
-                             resolve(awaiter.getResult());
-                         } catch(e) {
-                             reject(e);
-                         }
-                     });
-                 } else {
-                     resolve(awaiter);
+            if (typeof awaitable.getAwaiter === 'function') {
+                 var awaiter = awaitable.getAwaiter();
+                 if (awaiter.isCompleted()) {
+                     return Promise.resolve(awaiter.getResult());
                  }
-             });
-        }
-
-        return Promise.resolve(awaitable);
-    };
-
-    // Fix for Task.WhenAny to match .NET behavior (return completed task instead of faulting)
-    if (System && System.Threading && System.Threading.Tasks && System.Threading.Tasks.Task) {
-        System.Threading.Tasks.Task.whenAny = function (tasks) {
-            if (H5.is(tasks, System.Collections.IEnumerable)) {
-                tasks = H5.toArray(tasks);
-            } else if (!H5.isArray(tasks)) {
-                tasks = Array.prototype.slice.call(arguments, 0);
+                 return new Promise(function(resolve, reject) {
+                     var onCompleted = awaiter.onCompleted || awaiter.continueWith;
+                     if (typeof onCompleted === 'function') {
+                         onCompleted.call(awaiter, function() {
+                             try {
+                                 resolve(awaiter.getResult());
+                             } catch(e) {
+                                 reject(e);
+                             }
+                         });
+                     } else {
+                         resolve(awaiter);
+                     }
+                 });
             }
 
-            if (!tasks.length) {
-                throw new System.ArgumentException.$ctor1('At least one task is required');
-            }
-
-            var tcs = new System.Threading.Tasks.TaskCompletionSource(),
-                i;
-
-            for (i = 0; i < tasks.length; i++) {
-                tasks[i].continueWith(function (t) {
-                    tcs.trySetResult(t);
-                });
-            }
-
-            return tcs.task;
+            return Promise.resolve(awaitable);
         };
-    }
-");
-                    polyfillWritten = true;
+
+        // Fix for Task.WhenAny to match .NET behavior (return completed task instead of faulting)
+        if (System && System.Threading && System.Threading.Tasks && System.Threading.Tasks.Task) {
+            System.Threading.Tasks.Task.whenAny = function (tasks) {
+                if (H5.is(tasks, System.Collections.IEnumerable)) {
+                    tasks = H5.toArray(tasks);
+                } else if (!H5.isArray(tasks)) {
+                    tasks = Array.prototype.slice.call(arguments, 0);
+                }
+
+                if (!tasks.length) {
+                    throw new System.ArgumentException.$ctor1('At least one task is required');
+                }
+
+                var tcs = new System.Threading.Tasks.TaskCompletionSource(),
+                    i;
+
+                for (i = 0; i < tasks.length; i++) {
+                    tasks[i].continueWith(function (t) {
+                        tcs.trySetResult(t);
+                    });
+                }
+
+                return tcs.task;
+            };
+        }
+    ");
+                        polyfillWritten = true;
+                    }
                 }
             }
 

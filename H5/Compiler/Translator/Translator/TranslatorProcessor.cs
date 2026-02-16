@@ -259,11 +259,6 @@ namespace H5.Translator
 
             translator.ApplyProjectPropertiesToConfig();
 
-            if(translator.Rebuild)
-            {
-                translator.AssemblyInfo.EnableCache = false;
-            }
-
             Logger.LogTrace("Setting translator properties done");
 
             return translator;
