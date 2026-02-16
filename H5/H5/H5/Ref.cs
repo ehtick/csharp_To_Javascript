@@ -45,6 +45,11 @@ namespace H5
             return reference.Value;
         }
 
+        public static Ref<T> CreateIn(T value)
+        {
+            return new Ref<T>(() => value, v => { });
+        }
+
         public override string ToString()
         {
             return Value.ToString();

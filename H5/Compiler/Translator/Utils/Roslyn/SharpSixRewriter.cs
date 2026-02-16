@@ -1254,6 +1254,14 @@ namespace H5.Translator
             if (idx > -1)
             {
                 node = node.WithModifiers(node.Modifiers.RemoveAt(idx));
+
+                var type = node.Type;
+                var refType = SyntaxFactory.QualifiedName(
+                    SyntaxFactory.ParseName("global::H5"),
+                    SyntaxFactory.GenericName(
+                        SyntaxFactory.Identifier("Ref"),
+                        SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(type))));
+                node = node.WithType(refType.NormalizeWhitespace());
             }
 
             return node;
@@ -1265,6 +1273,9 @@ namespace H5.Translator
             {
                 return base.VisitArgument(node);
             }
+
+            var originalNode = node;
+            var expressionSymbol = semanticModel.GetSymbolInfo(node.Expression).Symbol;
 
             var ti = semanticModel.GetTypeInfo(node.Expression);
 
@@ -1356,31 +1367,29 @@ namespace H5.Translator
                     pType = GetCollectionElementType(parameter.Type);
                 }
 
-                if (node.Expression is CastExpressionSyntax && SymbolEqualityComparer.Default.Equals(type, pType) || parameter.RefKind != RefKind.None)
+                if (!(node.Expression is CastExpressionSyntax && SymbolEqualityComparer.Default.Equals(type, pType) || parameter.RefKind != RefKind.None))
                 {
-                    return node;
-                }
-
-                if (pType.TypeKind == TypeKind.Delegate || parameter.IsParams && ((IArrayTypeSymbol)parameter.Type).ElementType.TypeKind == TypeKind.Delegate)
-                {
-                    var expr = node.Expression;
-
-                    if (expr is LambdaExpressionSyntax || expr is AnonymousMethodExpressionSyntax || expr is QueryExpressionSyntax)
+                    if (pType.TypeKind == TypeKind.Delegate || parameter.IsParams && ((IArrayTypeSymbol)parameter.Type).ElementType.TypeKind == TypeKind.Delegate)
                     {
-                        expr = SyntaxFactory.ParenthesizedExpression(expr);
+                        var expr = node.Expression;
+
+                        if (expr is LambdaExpressionSyntax || expr is AnonymousMethodExpressionSyntax || expr is QueryExpressionSyntax)
+                        {
+                            expr = SyntaxFactory.ParenthesizedExpression(expr);
+                        }
+
+                        var cast = SyntaxFactory.CastExpression(
+                            SyntaxHelper.GenerateTypeSyntax(
+                                pType,
+                                semanticModel,
+                                pos,
+                                this
+                            ),
+                            expr
+                        );
+
+                        node = node.WithExpression(cast);
                     }
-
-                    var cast = SyntaxFactory.CastExpression(
-                        SyntaxHelper.GenerateTypeSyntax(
-                            pType,
-                            semanticModel,
-                            pos,
-                            this
-                        ),
-                        expr
-                    );
-
-                    node = node.WithExpression(cast);
                 }
             }
 
@@ -1389,7 +1398,94 @@ namespace H5.Translator
                 node = node.WithNameColon(SyntaxFactory.NameColon(SyntaxFactory.IdentifierName(parameter.Name)));
             }
 
-            if (node.RefKindKeyword.IsKind(SyntaxKind.InKeyword) || node.RefKindKeyword.IsKind(SyntaxKind.RefKeyword) && node.Expression is InvocationExpressionSyntax)
+            bool isRefInvocation = node.RefKindKeyword.IsKind(SyntaxKind.RefKeyword) && node.Expression is InvocationExpressionSyntax;
+            bool isIn = node.RefKindKeyword.IsKind(SyntaxKind.InKeyword);
+
+            if (!isIn && parameter != null && parameter.RefKind == RefKind.In)
+            {
+                isIn = true;
+            }
+
+            if (isIn)
+            {
+                if (expressionSymbol is IParameterSymbol ps && ps.RefKind == RefKind.In)
+                {
+                    node = node.WithRefKindKeyword(SyntaxFactory.Token(SyntaxKind.None));
+                }
+                else
+                {
+                    bool isLValue = false;
+                    if (expressionSymbol is ILocalSymbol || expressionSymbol is IParameterSymbol || expressionSymbol is IFieldSymbol || originalNode.Expression is ElementAccessExpressionSyntax)
+                    {
+                        isLValue = true;
+                    }
+
+                    var exprType = ti.Type ?? ti.ConvertedType;
+                    var typeSyntax = SyntaxHelper.GenerateTypeSyntax(exprType, semanticModel, originalNode.Expression.SpanStart, this);
+
+                    if (isLValue)
+                    {
+                        var createExpression = SyntaxFactory.ObjectCreationExpression(
+                             SyntaxFactory.QualifiedName(
+                                SyntaxFactory.ParseName("global::H5"),
+                                SyntaxFactory.GenericName(
+                                    SyntaxFactory.Identifier("Ref"),
+                                    SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(
+                                        typeSyntax
+                                    ))))).WithArgumentList(SyntaxFactory.ArgumentList(
+                            SyntaxFactory.SeparatedList<ArgumentSyntax>(
+                                new SyntaxNodeOrToken[]{
+                                    SyntaxFactory.Argument(
+                                        SyntaxFactory.ParenthesizedLambdaExpression(
+                                            node.Expression)
+                                        .WithParameterList(
+                                            SyntaxFactory.ParameterList()
+                                            .WithOpenParenToken(
+                                                SyntaxFactory.Token(SyntaxKind.OpenParenToken))
+                                            .WithCloseParenToken(
+                                                SyntaxFactory.Token(SyntaxKind.CloseParenToken)))
+                                        .WithArrowToken(
+                                            SyntaxFactory.Token(SyntaxKind.EqualsGreaterThanToken))),
+                                    SyntaxFactory.Token(SyntaxKind.CommaToken),
+                                    SyntaxFactory.Argument(
+                                        SyntaxFactory.ParenthesizedLambdaExpression(
+                                            SyntaxFactory.Block())
+                                        .WithParameterList(
+                                            SyntaxFactory.ParameterList(
+                                                SyntaxFactory.SingletonSeparatedList(
+                                                    SyntaxFactory.Parameter(
+                                                        SyntaxFactory.Identifier("_v_"))))
+                                            .WithOpenParenToken(
+                                                SyntaxFactory.Token(SyntaxKind.OpenParenToken))
+                                            .WithCloseParenToken(
+                                                SyntaxFactory.Token(SyntaxKind.CloseParenToken)))
+                                        .WithArrowToken(
+                                            SyntaxFactory.Token(SyntaxKind.EqualsGreaterThanToken)))})));
+
+                        node = node.WithExpression(createExpression.NormalizeWhitespace()).WithRefKindKeyword(SyntaxFactory.Token(SyntaxKind.None));
+                    }
+                    else
+                    {
+                        var createIn = SyntaxFactory.InvocationExpression(
+                            SyntaxFactory.MemberAccessExpression(
+                                SyntaxKind.SimpleMemberAccessExpression,
+                                 SyntaxFactory.QualifiedName(
+                                    SyntaxFactory.ParseName("global::H5"),
+                                    SyntaxFactory.GenericName(
+                                        SyntaxFactory.Identifier("Ref"),
+                                        SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(
+                                            typeSyntax
+                                        )))),
+                                SyntaxFactory.IdentifierName("CreateIn")
+                            ),
+                            SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(node.Expression)))
+                        );
+
+                        node = node.WithExpression(createIn.NormalizeWhitespace()).WithRefKindKeyword(SyntaxFactory.Token(SyntaxKind.None));
+                    }
+                }
+            }
+            else if (isRefInvocation)
             {
                 node = node.WithRefKindKeyword(SyntaxFactory.Token(SyntaxKind.None));
             }
