@@ -7,7 +7,6 @@ namespace H5.Compiler.IntegrationTests.UnimplementedLanguageFeatures
     public class CSharp10Tests : IntegrationTestBase
     {
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task RecordStructs()
         {
             var code = """
@@ -21,8 +20,8 @@ public class Program
     {
         var p = new Point(1, 2);
         var p2 = p with { X = 3 };
-        Console.WriteLine(p);
-        Console.WriteLine(p2);
+        Console.WriteLine(p.ToString());
+        Console.WriteLine(p2.ToString());
         Console.WriteLine(p.X);
     }
 }
