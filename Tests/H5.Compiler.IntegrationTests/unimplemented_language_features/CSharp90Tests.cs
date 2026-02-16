@@ -284,7 +284,7 @@ public class Program
 using System;
 Console.WriteLine("Hello, Top-Level Statements!");
 """;
-            await RunTest(code);
+            await RunTestExpectingError(code, "Top-level statements are not supported");
         }
 
         [TestMethod]
