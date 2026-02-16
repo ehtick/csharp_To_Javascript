@@ -164,6 +164,11 @@ namespace H5.Translator
                         throw new TranslatorException("AsyncMethodBuilder attribute is not supported");
                     }
 
+                    if (syntaxTree.GetRoot().DescendantNodes().OfType<AttributeSyntax>().Any(a => a.Name.ToString().Contains("InlineArray")))
+                    {
+                        throw new TranslatorException("Inline arrays are not supported");
+                    }
+
                     if (syntaxTree.GetRoot().DescendantNodes().OfType<PointerTypeSyntax>().Any())
                     {
                         throw new TranslatorException("Pointers are not supported");

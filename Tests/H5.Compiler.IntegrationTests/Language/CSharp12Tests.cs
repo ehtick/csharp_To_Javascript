@@ -84,8 +84,7 @@ public class Program
     }
 }
 """;
-            // Need InlineArray support in runtime
-            await RunTest(code, skipRoslyn: true);
+            await RunTestExpectingError(code, "Inline arrays are not supported");
         }
 
         [TestMethod]
