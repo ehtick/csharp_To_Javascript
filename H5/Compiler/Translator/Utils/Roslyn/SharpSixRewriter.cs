@@ -64,6 +64,7 @@ namespace H5.Translator
 
         private SharpSixRewriterCachedOutput _cachedRewrittenData;
         private bool isParent;
+        private Stack<Dictionary<ISymbol, string>> _primaryConstructorCaptures = new Stack<Dictionary<ISymbol, string>>();
 
         public SharpSixRewriter(ITranslator translator)
         {
@@ -1970,6 +1971,17 @@ namespace H5.Translator
                 return base.VisitIdentifierName(node);
             }
 
+            if (IsCapturedPrimaryConstructorParameter(symbol, out var fieldName) && ShouldUseFieldForCapturedParameter(node))
+            {
+                return SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    SyntaxFactory.ThisExpression(),
+                    SyntaxFactory.IdentifierName(fieldName))
+                .NormalizeWhitespace()
+                .WithLeadingTrivia(node.GetLeadingTrivia())
+                .WithTrailingTrivia(node.GetTrailingTrivia());
+            }
+
             bool isRef = false;
             if (symbol != null && symbol is ILocalSymbol ls && ls.IsRef && !(node.Parent is RefExpressionSyntax))
             {
@@ -2319,6 +2331,8 @@ namespace H5.Translator
 
         public override SyntaxNode VisitStructDeclaration(StructDeclarationSyntax node)
         {
+            ProcessPrimaryConstructor(node);
+
             currentType.Push(semanticModel.GetDeclaredSymbol(node));
 
             var old = fields;
@@ -2338,6 +2352,12 @@ namespace H5.Translator
                 list.AddRange(arr);
                 c = c.WithMembers(SyntaxFactory.List(list));
             }
+
+            if (node.ParameterList != null && c != null)
+            {
+                c = (StructDeclarationSyntax)SynthesizePrimaryConstructor(node, c);
+            }
+            _primaryConstructorCaptures.Pop();
 
             if (c != null && isReadOnly)
             {
@@ -2365,6 +2385,8 @@ namespace H5.Translator
 
         public override SyntaxNode VisitClassDeclaration(ClassDeclarationSyntax node)
         {
+            ProcessPrimaryConstructor(node);
+
             currentType.Push(semanticModel.GetDeclaredSymbol(node));
             var oldIndex = IndexInstance;
             IndexInstance = 0;
@@ -2384,6 +2406,12 @@ namespace H5.Translator
                 list.AddRange(arr);
                 c = c.WithMembers(SyntaxFactory.List(list));
             }
+
+            if (node.ParameterList != null && c != null)
+            {
+                c = (ClassDeclarationSyntax)SynthesizePrimaryConstructor(node, c);
+            }
+            _primaryConstructorCaptures.Pop();
 
             if (c.Modifiers.IndexOf(SyntaxKind.PrivateKeyword) > -1 && c.Modifiers.IndexOf(SyntaxKind.ProtectedKeyword) > -1)
             {
@@ -3915,6 +3943,349 @@ namespace H5.Translator
             }
 
             return argumentList;
+        }
+
+        private bool IsCapturedPrimaryConstructorParameter(ISymbol symbol, out string fieldName)
+        {
+            fieldName = null;
+            if (_primaryConstructorCaptures.Count == 0 || symbol == null)
+            {
+                return false;
+            }
+
+            var captures = _primaryConstructorCaptures.Peek();
+            return captures != null && captures.TryGetValue(symbol, out fieldName);
+        }
+
+        private bool ShouldUseFieldForCapturedParameter(SyntaxNode node)
+        {
+            var parent = node.Parent;
+            while (parent != null)
+            {
+                if (parent is MethodDeclarationSyntax ||
+                    parent is AccessorDeclarationSyntax)
+                {
+                    return true;
+                }
+
+                // If in arrow expression body, check if it belongs to something that should use the field
+                if (parent is ArrowExpressionClauseSyntax)
+                {
+                    var arrowParent = parent.Parent;
+                    if (arrowParent is MethodDeclarationSyntax ||
+                        arrowParent is LocalFunctionStatementSyntax ||
+                        arrowParent is AccessorDeclarationSyntax ||
+                        arrowParent is PropertyDeclarationSyntax ||
+                        arrowParent is IndexerDeclarationSyntax)
+                    {
+                        // Expression-bodied members use captured fields
+                        return true;
+                    }
+                    // What else uses arrow?
+                }
+
+                if (parent is VariableDeclaratorSyntax && parent.Parent is VariableDeclarationSyntax && parent.Parent.Parent is FieldDeclarationSyntax)
+                {
+                    // Inside field initializer - use parameter
+                    return false;
+                }
+
+                if (parent is PropertyDeclarationSyntax && (parent as PropertyDeclarationSyntax).Initializer != null)
+                {
+                    // Inside property initializer - use parameter
+                    return false;
+                }
+
+                if (parent is BaseListSyntax || parent is ConstructorInitializerSyntax)
+                {
+                    // Inside base call - use parameter
+                    return false;
+                }
+
+                if (parent is TypeDeclarationSyntax)
+                {
+                    // Reached class/struct level without finding method/accessor
+                    // This implies we are in some other member like attribute?
+                    // Attributes on members?
+                    // [Attr(param)] void M() -> attribute arguments must be constant, so param usage is invalid anyway.
+                    // So return false (don't rewrite).
+                    return false;
+                }
+
+                parent = parent.Parent;
+            }
+
+            return false;
+        }
+
+        private void ProcessPrimaryConstructor(TypeDeclarationSyntax node)
+        {
+            Dictionary<ISymbol, string> captures = new Dictionary<ISymbol, string>(SymbolEqualityComparer.Default);
+
+            if (node.ParameterList != null)
+            {
+                // Identify captured parameters
+                var parameterSymbols = new Dictionary<string, IParameterSymbol>();
+                foreach (var param in node.ParameterList.Parameters)
+                {
+                    var symbol = semanticModel.GetDeclaredSymbol(param);
+                    if (symbol != null)
+                    {
+                        parameterSymbols[param.Identifier.ValueText] = symbol;
+                    }
+                }
+
+                if (parameterSymbols.Count > 0)
+                {
+                    // Scan usages in the class
+                    // We need to look for IdentifierNameSyntax that resolves to one of our parameters
+                    // And is inside a location that requires capturing (method, property body)
+
+                    // Optimization: We can just scan all descendant identifiers.
+                    // But we must exclude the ParameterList itself.
+
+                    foreach (var member in node.Members)
+                    {
+                         // Visit all identifiers in members
+                         foreach (var identifier in member.DescendantNodes().OfType<IdentifierNameSyntax>())
+                         {
+                             var symbolInfo = semanticModel.GetSymbolInfo(identifier);
+                             var symbol = symbolInfo.Symbol;
+
+                             if (symbol != null && symbol is IParameterSymbol ps && parameterSymbols.ContainsValue(ps))
+                             {
+                                 // Found usage. Check if it's a capture scenario.
+                                 if (ShouldUseFieldForCapturedParameter(identifier))
+                                 {
+                                     if (!captures.ContainsKey(ps))
+                                     {
+                                         // Create unique field name
+                                         // Usually just the name, but to avoid collision with other members?
+                                         // Primary constructor parameters share scope with class members.
+                                         // If class has 'int x', and primary ctor has 'int x',
+                                         // then 'x' inside method refers to 'this.x' (field) not param 'x' (shadowed).
+                                         // C# rules say:
+                                         // Simple names look up parameters first in scope of class?
+                                         // No, parameters are in scope throughout class body.
+                                         // But they can be shadowed by members.
+                                         // If 'x' resolves to ParameterSymbol, it means it was NOT shadowed.
+
+                                         // So we generate a backing field.
+                                         // Use a name that won't conflict. "<p>Name" or similar.
+                                         // Or just use the name if we assume H5 handles private fields okay?
+                                         // Let's use a safe name.
+                                         captures[ps] = "_ctor_param_" + ps.Name;
+                                     }
+                                 }
+                             }
+                         }
+                    }
+                }
+            }
+
+            _primaryConstructorCaptures.Push(captures);
+        }
+
+        private TypeDeclarationSyntax SynthesizePrimaryConstructor(TypeDeclarationSyntax originalNode, TypeDeclarationSyntax rewrittenNode)
+        {
+            var captures = _primaryConstructorCaptures.Peek();
+
+            // 1. Remove ParameterList
+            rewrittenNode = rewrittenNode.WithParameterList(null);
+
+            // 2. Extract Base Constructor Arguments
+            ArgumentListSyntax baseArgs = null;
+            if (originalNode.BaseList != null)
+            {
+                var newTypes = new List<BaseTypeSyntax>();
+                bool changed = false;
+                foreach (var baseType in originalNode.BaseList.Types)
+                {
+                    if (baseType is PrimaryConstructorBaseTypeSyntax pcbt)
+                    {
+                        baseArgs = pcbt.ArgumentList;
+                        // Keep the type, but convert to SimpleBaseType
+                        var newBase = SyntaxFactory.SimpleBaseType(pcbt.Type)
+                            .WithLeadingTrivia(pcbt.GetLeadingTrivia())
+                            .WithTrailingTrivia(pcbt.GetTrailingTrivia());
+                        newTypes.Add(newBase);
+                        changed = true;
+                    }
+                    else
+                    {
+                        newTypes.Add(baseType);
+                    }
+                }
+
+                if (changed)
+                {
+                    var rewrittenBaseList = rewrittenNode.BaseList;
+                    var rewrittenTypes = new List<BaseTypeSyntax>();
+                    int idx = 0;
+                    foreach (var bt in rewrittenBaseList.Types)
+                    {
+                        if (idx < originalNode.BaseList.Types.Count && originalNode.BaseList.Types[idx] is PrimaryConstructorBaseTypeSyntax)
+                        {
+                            if (bt is PrimaryConstructorBaseTypeSyntax btpc)
+                            {
+                                rewrittenTypes.Add(SyntaxFactory.SimpleBaseType(btpc.Type).WithLeadingTrivia(bt.GetLeadingTrivia()).WithTrailingTrivia(bt.GetTrailingTrivia()));
+                            }
+                            else
+                            {
+                                rewrittenTypes.Add(bt);
+                            }
+                        }
+                        else
+                        {
+                            rewrittenTypes.Add(bt);
+                        }
+                        idx++;
+                    }
+                    rewrittenNode = rewrittenNode.WithBaseList(rewrittenBaseList.WithTypes(SyntaxFactory.SeparatedList(rewrittenTypes)));
+                }
+            }
+
+            // 3. Extract Field Initializers
+            var newMembers = new List<MemberDeclarationSyntax>();
+            var movedInitializers = new List<StatementSyntax>();
+
+            foreach (var member in rewrittenNode.Members)
+            {
+                if (member is FieldDeclarationSyntax fd && !fd.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword) || m.IsKind(SyntaxKind.ConstKeyword)))
+                {
+                    // Instance field
+                    var newVars = new List<VariableDeclaratorSyntax>();
+                    bool changed = false;
+                    foreach (var v in fd.Declaration.Variables)
+                    {
+                        if (v.Initializer != null)
+                        {
+                            string targetName = v.Identifier.ValueText;
+                            if (targetName.StartsWith(AutoInitFieldPrefix))
+                            {
+                                // It's a property backing field generated by VisitPropertyDeclaration
+                                // We remove the field and assign to the property instead
+                                targetName = targetName.Substring(AutoInitFieldPrefix.Length);
+                                var assign = SyntaxFactory.AssignmentExpression(
+                                    SyntaxKind.SimpleAssignmentExpression,
+                                    SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(targetName)),
+                                    v.Initializer.Value
+                                );
+                                movedInitializers.Add(SyntaxFactory.ExpressionStatement(assign));
+                                // Do not add to newVars (remove the field)
+                                changed = true;
+                            }
+                            else
+                            {
+                                // Move initializer to statement: this.v = init;
+                                var assign = SyntaxFactory.AssignmentExpression(
+                                    SyntaxKind.SimpleAssignmentExpression,
+                                    SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(targetName)),
+                                    v.Initializer.Value
+                                );
+                                movedInitializers.Add(SyntaxFactory.ExpressionStatement(assign));
+                                newVars.Add(v.WithInitializer(null));
+                                changed = true;
+                            }
+                        }
+                        else
+                        {
+                            newVars.Add(v);
+                        }
+                    }
+                    if (changed)
+                    {
+                        if (newVars.Count > 0)
+                        {
+                            newMembers.Add(fd.WithDeclaration(fd.Declaration.WithVariables(SyntaxFactory.SeparatedList(newVars))));
+                        }
+                    }
+                    else
+                    {
+                        newMembers.Add(fd);
+                    }
+                }
+                else if (member is PropertyDeclarationSyntax pd && !pd.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword)))
+                {
+                    if (pd.Initializer != null)
+                    {
+                        // Instance property with initializer
+                        // Should have been handled by VisitPropertyDeclaration but if not:
+                        var assign = SyntaxFactory.AssignmentExpression(
+                                SyntaxKind.SimpleAssignmentExpression,
+                                SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(pd.Identifier)),
+                                pd.Initializer.Value
+                            );
+                        movedInitializers.Add(SyntaxFactory.ExpressionStatement(assign));
+                        newMembers.Add(pd.WithInitializer(null).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.None)));
+                    }
+                    else
+                    {
+                        newMembers.Add(pd);
+                    }
+                }
+                else
+                {
+                    newMembers.Add(member);
+                }
+            }
+
+            // 4. Synthesize Fields for Captures
+            if (captures != null)
+            {
+                foreach (var kvp in captures)
+                {
+                    var symbol = kvp.Key as IParameterSymbol;
+                    var fieldName = kvp.Value;
+
+                    var typeSyntax = SyntaxHelper.GenerateTypeSyntax(symbol.Type, semanticModel, originalNode.SpanStart, this);
+
+                    // Use ParseMemberDeclaration to ensure valid syntax structure including trivia
+                    var fieldCode = $"private {typeSyntax.ToString()} {fieldName};" + Environment.NewLine;
+                    var fieldDecl = (FieldDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration(fieldCode);
+
+                    newMembers.Insert(0, fieldDecl);
+                }
+            }
+
+            // 5. Synthesize Constructor
+            var ctorParams = originalNode.ParameterList.Parameters;
+
+            var ctorBodyStatements = new List<StatementSyntax>();
+
+            // Assign captures: this._field = param;
+            if (captures != null)
+            {
+                foreach (var kvp in captures)
+                {
+                    var symbol = kvp.Key as IParameterSymbol;
+                    var fieldName = kvp.Value;
+                    var paramName = symbol.Name;
+
+                    var assign = SyntaxFactory.AssignmentExpression(
+                        SyntaxKind.SimpleAssignmentExpression,
+                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(fieldName)),
+                        SyntaxFactory.IdentifierName(paramName)
+                    );
+                    ctorBodyStatements.Add(SyntaxFactory.ExpressionStatement(assign));
+                }
+            }
+
+            ctorBodyStatements.AddRange(movedInitializers);
+
+            var ctor = SyntaxFactory.ConstructorDeclaration(originalNode.Identifier)
+                .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
+                .WithParameterList(originalNode.ParameterList)
+                .WithBody(SyntaxFactory.Block(ctorBodyStatements));
+
+            if (baseArgs != null)
+            {
+                ctor = ctor.WithInitializer(SyntaxFactory.ConstructorInitializer(SyntaxKind.BaseConstructorInitializer, baseArgs));
+            }
+
+            newMembers.Add(ctor);
+
+            return rewrittenNode.WithMembers(SyntaxFactory.List(newMembers));
         }
     }
 }
