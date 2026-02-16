@@ -423,6 +423,12 @@ namespace System
             get;
         }
 
+        [H5.Template("{left} === {right}")]
+        public static extern bool operator ==(Type left, Type right);
+
+        [H5.Template("{left} !== {right}")]
+        public static extern bool operator !=(Type left, Type right);
+
         [H5.Template("H5.getTypeName({this})")]
         public override extern string ToString();
 
