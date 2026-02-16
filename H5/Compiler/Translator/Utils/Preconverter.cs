@@ -487,6 +487,11 @@ namespace H5.Translator
                                 continue;
                             }
 
+                            if (i - 1 >= result.Length)
+                            {
+                                return base.VisitInvocationExpression(invocationExpression);
+                            }
+
                             result[i - 1] = orig[map[i] - 1];
                         }
                     }
@@ -497,6 +502,11 @@ namespace H5.Translator
                             if (map[i] < 0)
                             {
                                 continue;
+                            }
+
+                            if (i >= result.Length)
+                            {
+                                return base.VisitInvocationExpression(invocationExpression);
                             }
 
                             result[i] = orig[map[i]];
