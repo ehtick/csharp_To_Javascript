@@ -652,6 +652,38 @@ namespace H5.Translator
             return node.WithStatements(newStatements);
         }
 
+        public override SyntaxNode VisitLockStatement(LockStatementSyntax node)
+        {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitLockStatement(node);
+            }
+
+            var typeInfo = semanticModel.GetTypeInfo(node.Expression);
+            var type = typeInfo.Type ?? typeInfo.ConvertedType;
+
+            if (type != null && type.Name == "Lock" && type.ContainingNamespace?.ToString() == "System.Threading")
+            {
+                var memberAccess = SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    node.Expression,
+                    SyntaxFactory.IdentifierName("EnterScope")
+                );
+
+                var invocation = SyntaxFactory.InvocationExpression(memberAccess);
+
+                var usingStmt = SyntaxFactory.UsingStatement(
+                    null,
+                    invocation,
+                    node.Statement
+                ).WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+
+                return Visit(usingStmt);
+            }
+
+            return base.VisitLockStatement(node);
+        }
+
         private SyntaxList<StatementSyntax> ProcessBlockStatements(IEnumerable<StatementSyntax> statementsEnumerable)
         {
             var statements = statementsEnumerable.ToList();
