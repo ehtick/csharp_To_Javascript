@@ -39,7 +39,9 @@ namespace H5.Compiler.IntegrationTests
                 {
                     var extractedJs = h5Js.Substring(index);
                     var fileName = Path.GetFileNameWithoutExtension(filePath) + "." + membName + ".js";
-                    var tempPath = Path.Combine(Path.GetTempPath(), fileName);
+                    var dumpPath = Path.Combine(Path.GetTempPath(), "H5.Tests.GeneratedJavascript");
+                    Directory.CreateDirectory(dumpPath);
+                    var tempPath = Path.Combine(dumpPath, fileName);
                     File.WriteAllText(tempPath, extractedJs);
                 }
             }
