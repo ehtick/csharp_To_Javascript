@@ -3048,6 +3048,8 @@ namespace H5.Translator
                 return base.VisitParenthesizedLambdaExpression(node);
             }
 
+            var hasOptionalParameters = node.ParameterList.Parameters.Any(p => p.Default != null);
+
             var oldMarkAsAsync = markAsAsync;
             markAsAsync = false;
             var ti = semanticModel.GetTypeInfo(node);
@@ -3108,6 +3110,67 @@ namespace H5.Translator
             }
 
             markAsAsync = oldMarkAsAsync;
+
+            if (hasOptionalParameters && !IsExpressionOfT && newNode is ParenthesizedLambdaExpressionSyntax lambdaWithOptional)
+            {
+                var symbol = semanticModel.GetSymbolInfo(node).Symbol as IMethodSymbol;
+
+                if (symbol != null)
+                {
+                    var delegateName = GetUniqueTempKey("Delegate_L");
+                    var typeParameters = new List<TypeParameterSyntax>();
+                    var typeArguments = new List<TypeSyntax>();
+                    var constraints = new List<TypeParameterConstraintClauseSyntax>();
+
+                    var current = symbol.ContainingSymbol;
+                    while (current is IMethodSymbol method)
+                    {
+                        if (method.IsGenericMethod)
+                        {
+                            foreach (var tp in method.TypeParameters.Reverse())
+                            {
+                                typeParameters.Insert(0, SyntaxFactory.TypeParameter(tp.Name));
+                                typeArguments.Insert(0, SyntaxFactory.ParseTypeName(tp.Name));
+
+                                var constraint = GetConstraint(tp, node.SpanStart);
+                                if (constraint != null)
+                                {
+                                    constraints.Insert(0, constraint);
+                                }
+                            }
+                        }
+                        current = current.ContainingSymbol;
+                    }
+
+                    var returnType = SyntaxHelper.GenerateTypeSyntax(symbol.ReturnType, semanticModel, node.SpanStart, this);
+
+                    var delegateDecl = SyntaxFactory.DelegateDeclaration(
+                        SyntaxFactory.List<AttributeListSyntax>(),
+                        SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PrivateKeyword).WithTrailingTrivia(SyntaxFactory.Space)),
+                        SyntaxFactory.Token(SyntaxKind.DelegateKeyword).WithTrailingTrivia(SyntaxFactory.Space),
+                        returnType,
+                        SyntaxFactory.Identifier(delegateName).WithLeadingTrivia(SyntaxFactory.Space),
+                        typeParameters.Count > 0 ? SyntaxFactory.TypeParameterList(SyntaxFactory.SeparatedList(typeParameters)) : null,
+                        lambdaWithOptional.ParameterList,
+                        SyntaxFactory.List(constraints),
+                        SyntaxFactory.Token(SyntaxKind.SemicolonToken));
+
+                    fields.Add(delegateDecl);
+
+                    var newParams = new List<ParameterSyntax>();
+                    foreach (var p in lambdaWithOptional.ParameterList.Parameters)
+                    {
+                        newParams.Add(p.WithDefault(null));
+                    }
+
+                    newNode = SyntaxFactory.CastExpression(
+                        typeArguments.Count > 0
+                            ? SyntaxFactory.GenericName(SyntaxFactory.Identifier(delegateName), SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(typeArguments)))
+                            : SyntaxFactory.ParseTypeName(delegateName),
+                        SyntaxFactory.ParenthesizedExpression(lambdaWithOptional.WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(newParams))))
+                    );
+                }
+            }
 
             if (newNode is ParenthesizedLambdaExpressionSyntax lambda && lambda.ReturnType != null)
             {
@@ -3834,6 +3897,38 @@ namespace H5.Translator
                                        (SyntaxNode)SyntaxFactory.ConditionalExpression(condition, whenTrue, whenFalse);
 
             return newNode.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+        }
+
+        private TypeParameterConstraintClauseSyntax GetConstraint(ITypeParameterSymbol tp, int pos)
+        {
+            var constraints = new List<TypeParameterConstraintSyntax>();
+
+            if (tp.HasReferenceTypeConstraint)
+            {
+                constraints.Add(SyntaxFactory.ClassOrStructConstraint(SyntaxKind.ClassConstraint));
+            }
+            else if (tp.HasValueTypeConstraint)
+            {
+                constraints.Add(SyntaxFactory.ClassOrStructConstraint(SyntaxKind.StructConstraint));
+            }
+
+            if (tp.HasConstructorConstraint)
+            {
+                constraints.Add(SyntaxFactory.ConstructorConstraint());
+            }
+
+            foreach (var type in tp.ConstraintTypes)
+            {
+                constraints.Add(SyntaxFactory.TypeConstraint(SyntaxHelper.GenerateTypeSyntax(type, semanticModel, pos, this)));
+            }
+
+            if (constraints.Count > 0)
+            {
+                return SyntaxFactory.TypeParameterConstraintClause(SyntaxFactory.IdentifierName(tp.Name), SyntaxFactory.SeparatedList(constraints))
+                    .WithWhereKeyword(SyntaxFactory.Token(SyntaxKind.WhereKeyword).WithLeadingTrivia(SyntaxFactory.Space).WithTrailingTrivia(SyntaxFactory.Space));
+            }
+
+            return null;
         }
 
         private ArgumentListSyntax ProcessCallerArgumentExpression(ArgumentListSyntax argumentList, SyntaxNode originalNode, IMethodSymbol method, SemanticModel semanticModel)
