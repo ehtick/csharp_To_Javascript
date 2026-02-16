@@ -1873,7 +1873,7 @@ namespace H5.Translator
                 }
                 else if (target is ITypeSymbol ts)
                 {
-                    return SyntaxFactory.ParseName(ts.GetFullyQualifiedNameAndValidate(semanticModel, node.SpanStart)).WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+                    return SyntaxFactory.ParseTypeName(ts.GetFullyQualifiedNameAndValidate(semanticModel, node.SpanStart)).WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
                 }
             }
 
