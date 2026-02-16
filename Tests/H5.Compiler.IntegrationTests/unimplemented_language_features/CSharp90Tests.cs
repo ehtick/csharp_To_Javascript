@@ -196,7 +196,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Failing with SyntaxError in JS output despite rewriter implementation")]
         public async Task ExtensionGetEnumerator()
         {
             var code = """
