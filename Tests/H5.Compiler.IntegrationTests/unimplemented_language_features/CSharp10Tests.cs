@@ -96,7 +96,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task ExtendedPropertyPatterns()
         {
             var code = """
