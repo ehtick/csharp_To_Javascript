@@ -99,7 +99,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task EscapeSequence()
         {
             var code = """
@@ -109,8 +108,18 @@ public class Program
 {
     public static void Main()
     {
-        string s = "\e";
-        Console.WriteLine((int)s[0]); // 27
+        Console.WriteLine((int)"\e"[0]); // 27
+        Console.WriteLine((int)"\a"[0]); // 7
+        Console.WriteLine((int)"\b"[0]); // 8
+        Console.WriteLine((int)"\f"[0]); // 12
+        Console.WriteLine((int)"\n"[0]); // 10
+        Console.WriteLine((int)"\r"[0]); // 13
+        Console.WriteLine((int)"\t"[0]); // 9
+        Console.WriteLine((int)"\v"[0]); // 11
+        Console.WriteLine((int)"\'"[0]); // 39
+        Console.WriteLine((int)"\""[0]); // 34
+        Console.WriteLine((int)"\\"[0]); // 92
+        Console.WriteLine((int)"\0"[0]); // 0
     }
 }
 """;

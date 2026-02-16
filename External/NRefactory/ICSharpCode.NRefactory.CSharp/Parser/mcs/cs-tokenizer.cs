@@ -1884,6 +1884,8 @@ namespace ICSharpCode.NRefactory.MonoCSharp
                 v = '\\'; break;
             case 'f':
                 v = '\f'; break;
+            case 'e':
+                v = 0x1B; break;
             case '0':
                 v = 0; break;
             case '"':
