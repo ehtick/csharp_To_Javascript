@@ -4694,8 +4694,7 @@ namespace H5.Translator
             // Check for spread elements
             if (node.Elements.Any(e => e is SpreadElementSyntax))
             {
-                 var mapped = semanticModel.SyntaxTree.GetLineSpan(node.Span);
-                 throw new NotSupportedException(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Spread elements in collection expressions are not supported yet", semanticModel.SyntaxTree.FilePath, node.ToString()));
+                 return RewriteCollectionExpressionWithSpread(node, targetType);
             }
 
             var visitedElements = new List<SyntaxNodeOrToken>();
@@ -4779,12 +4778,12 @@ namespace H5.Translator
 
                 if (useList)
                 {
+                    var elementType = namedType.TypeArguments[0];
+                    var elementTypeSyntax = SyntaxHelper.GenerateTypeSyntax(elementType, semanticModel, node.SpanStart, this);
                     TypeSyntax typeSyntax;
+
                     if (namedType.TypeKind == TypeKind.Interface)
                     {
-                         var elementType = namedType.TypeArguments[0];
-                         var elementTypeSyntax = SyntaxHelper.GenerateTypeSyntax(elementType, semanticModel, node.SpanStart, this);
-
                          typeSyntax = SyntaxFactory.QualifiedName(
                             SyntaxFactory.ParseName("System.Collections.Generic"),
                             SyntaxFactory.GenericName(
@@ -4796,14 +4795,19 @@ namespace H5.Translator
                         typeSyntax = SyntaxHelper.GenerateTypeSyntax(namedType, semanticModel, node.SpanStart, this);
                     }
 
-                     var collectionInitializer = SyntaxFactory.InitializerExpression(
-                        SyntaxKind.CollectionInitializerExpression,
+                    var arrayInitializer = SyntaxFactory.InitializerExpression(
+                        SyntaxKind.ArrayInitializerExpression,
                         SyntaxFactory.SeparatedList<ExpressionSyntax>(visitedElements));
+
+                    var newArray = SyntaxFactory.ArrayCreationExpression(
+                        SyntaxFactory.ArrayType(elementTypeSyntax)
+                            .WithRankSpecifiers(SyntaxFactory.SingletonList(SyntaxFactory.ArrayRankSpecifier(SyntaxFactory.SingletonSeparatedList<ExpressionSyntax>(SyntaxFactory.OmittedArraySizeExpression())))))
+                        .WithInitializer(arrayInitializer)
+                        .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space));
 
                     var newList = SyntaxFactory.ObjectCreationExpression(typeSyntax)
                         .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space))
-                        .WithArgumentList(SyntaxFactory.ArgumentList())
-                        .WithInitializer(collectionInitializer);
+                        .WithArgumentList(SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(newArray))));
 
                     return newList.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
                 }
@@ -4824,6 +4828,145 @@ namespace H5.Translator
 
             return base.VisitCollectionExpression(node);
 
+        }
+
+        private SyntaxNode RewriteCollectionExpressionWithSpread(CollectionExpressionSyntax node, ITypeSymbol targetType)
+        {
+            var elementType = GetCollectionElementType(targetType);
+
+            if (elementType == null)
+            {
+                var mapped = semanticModel.SyntaxTree.GetLineSpan(node.Span);
+                throw new NotSupportedException(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Cannot determine element type for collection expression with spread elements", semanticModel.SyntaxTree.FilePath, node.ToString()));
+            }
+
+            var elementTypeSyntax = SyntaxHelper.GenerateTypeSyntax(elementType, semanticModel, node.SpanStart, this);
+            var listTypeSyntax = SyntaxFactory.QualifiedName(
+                SyntaxFactory.ParseName("global::System.Collections.Generic"),
+                SyntaxFactory.GenericName(SyntaxFactory.Identifier("List"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(elementTypeSyntax))));
+
+            var statements = new List<StatementSyntax>();
+            var listVarName = GetUniqueTempKey("list");
+
+            var creation = SyntaxFactory.ObjectCreationExpression(listTypeSyntax)
+                .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                .WithArgumentList(SyntaxFactory.ArgumentList());
+
+            statements.Add(SyntaxFactory.LocalDeclarationStatement(
+                SyntaxFactory.VariableDeclaration(SyntaxFactory.IdentifierName("var"))
+                .WithVariables(SyntaxFactory.SingletonSeparatedList(
+                    SyntaxFactory.VariableDeclarator(SyntaxFactory.Identifier(listVarName))
+                    .WithInitializer(SyntaxFactory.EqualsValueClause(creation)))))
+                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
+
+            foreach (var element in node.Elements)
+            {
+                if (element is ExpressionElementSyntax expr)
+                {
+                    var visitedExpr = (ExpressionSyntax)Visit(expr.Expression);
+                    var addCall = SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName(listVarName), SyntaxFactory.IdentifierName("Add")),
+                        SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(visitedExpr))));
+
+                    statements.Add(SyntaxFactory.ExpressionStatement(addCall).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
+                }
+                else if (element is SpreadElementSyntax spread)
+                {
+                    var visitedExpr = (ExpressionSyntax)Visit(spread.Expression);
+                    var tempVarName = GetUniqueTempKey("spread");
+
+                    // Assign spread expression to temp variable
+                    var typeInfo = semanticModel.GetTypeInfo(spread.Expression);
+                    var spreadType = typeInfo.Type ?? typeInfo.ConvertedType;
+                    var spreadTypeSyntax = SyntaxHelper.GenerateTypeSyntax(spreadType, semanticModel, spread.SpanStart, this);
+
+                    statements.Add(SyntaxFactory.LocalDeclarationStatement(
+                        SyntaxFactory.VariableDeclaration(spreadTypeSyntax)
+                        .WithVariables(SyntaxFactory.SingletonSeparatedList(
+                            SyntaxFactory.VariableDeclarator(SyntaxFactory.Identifier(tempVarName))
+                            .WithInitializer(SyntaxFactory.EqualsValueClause(visitedExpr)))))
+                        .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
+
+                    // if (temp != null) list.AddRange(temp)
+                    var addRangeCall = SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName(listVarName), SyntaxFactory.IdentifierName("AddRange")),
+                        SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.IdentifierName(tempVarName)))));
+
+                    var ifStatement = SyntaxFactory.IfStatement(
+                        SyntaxFactory.BinaryExpression(SyntaxKind.NotEqualsExpression, SyntaxFactory.IdentifierName(tempVarName), SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)),
+                        SyntaxFactory.ExpressionStatement(addRangeCall).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
+
+                    statements.Add(ifStatement);
+                }
+            }
+
+            ExpressionSyntax resultExpr = SyntaxFactory.IdentifierName(listVarName);
+
+            bool targetIsList = false;
+            if (targetType is INamedTypeSymbol named &&
+                (named.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IList_T ||
+                 named.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_ICollection_T ||
+                 (named.Name == "List" && named.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic")))
+            {
+                targetIsList = true;
+            }
+
+            if (!targetIsList)
+            {
+                resultExpr = SyntaxFactory.InvocationExpression(
+                    SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, resultExpr, SyntaxFactory.IdentifierName("ToArray")),
+                    SyntaxFactory.ArgumentList());
+            }
+
+            statements.Add(SyntaxFactory.ReturnStatement(resultExpr).WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)));
+
+            var block = SyntaxFactory.Block(statements);
+            var lambda = SyntaxFactory.ParenthesizedLambdaExpression(SyntaxFactory.ParameterList(), block);
+
+            var isAsync = AwaitersCollector.HasAwaiters(semanticModel, node);
+            if (isAsync)
+            {
+                lambda = lambda.WithAsyncKeyword(SyntaxFactory.Token(SyntaxKind.AsyncKeyword));
+            }
+
+            TypeSyntax returnTypeSyntax;
+            if (targetIsList)
+            {
+                returnTypeSyntax = listTypeSyntax;
+            }
+            else
+            {
+                returnTypeSyntax = SyntaxFactory.ArrayType(elementTypeSyntax)
+                    .WithRankSpecifiers(SyntaxFactory.SingletonList(SyntaxFactory.ArrayRankSpecifier(SyntaxFactory.SingletonSeparatedList<ExpressionSyntax>(SyntaxFactory.OmittedArraySizeExpression()))));
+            }
+
+            TypeSyntax funcTypeSyntax;
+            if (isAsync)
+            {
+                var taskType = SyntaxFactory.QualifiedName(
+                    SyntaxFactory.ParseName("global::System.Threading.Tasks"),
+                    SyntaxFactory.GenericName(SyntaxFactory.Identifier("Task"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(returnTypeSyntax))));
+
+                funcTypeSyntax = SyntaxFactory.QualifiedName(
+                    SyntaxFactory.IdentifierName("global::System"),
+                    SyntaxFactory.GenericName(SyntaxFactory.Identifier("Func"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList<TypeSyntax>(taskType))));
+            }
+            else
+            {
+                funcTypeSyntax = SyntaxFactory.QualifiedName(
+                    SyntaxFactory.IdentifierName("global::System"),
+                    SyntaxFactory.GenericName(SyntaxFactory.Identifier("Func"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(returnTypeSyntax))));
+            }
+
+            var cast = SyntaxFactory.CastExpression(funcTypeSyntax, SyntaxFactory.ParenthesizedExpression(lambda));
+            var invocation = SyntaxFactory.InvocationExpression(SyntaxFactory.ParenthesizedExpression(cast));
+
+            if (isAsync)
+            {
+                return SyntaxFactory.AwaitExpression(invocation).NormalizeWhitespace();
+            }
+
+            return invocation.NormalizeWhitespace();
         }
 
         private TypeParameterConstraintClauseSyntax GetConstraint(ITypeParameterSymbol tp, int pos)
