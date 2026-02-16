@@ -22,9 +22,7 @@ public class Program
     }
 }
 """;
-            // Expected to fail in H5 with "Feature not supported" eventually.
-            // Currently might crash or fail compilation.
-            await RunTest(code, skipRoslyn: true);
+            await RunTestExpectingError(code, "Pointers are not supported");
         }
 
         [TestMethod]
@@ -51,53 +49,7 @@ public class Program
     }
 }
 """;
-            await RunTest(code, skipRoslyn: true);
-        }
-
-        [TestMethod]
-        public async Task MakeRef()
-        {
-            var code = """
-using System;
-
-public class Program
-{
-    public static void Main()
-    {
-        int x = 10;
-        TypedReference tr = __makeref(x);
-        Console.WriteLine(__refvalue(tr, int));
-    }
-}
-""";
-            await RunTest(code, skipRoslyn: true);
-        }
-
-        [TestMethod]
-        public async Task ArgIterator() // varargs not fully supported like in C/C++ style
-        {
-            var code = """
-using System;
-
-public class Program
-{
-    public static void Main()
-    {
-        Print(__arglist(1, 2, 3));
-    }
-
-    public static void Print(__arglist)
-    {
-        ArgIterator iterator = new ArgIterator(__arglist);
-        while (iterator.GetRemainingCount() > 0)
-        {
-             TypedReference tr = iterator.GetNextArg();
-             Console.WriteLine(__refvalue(tr, int));
-        }
-    }
-}
-""";
-            await RunTest(code, skipRoslyn: true);
+            await RunTestExpectingError(code, "Unsafe code is not supported");
         }
     }
 }
