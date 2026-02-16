@@ -40,16 +40,22 @@ namespace H5.Translator
                     var symbol = model.GetDeclaredSymbol(single) as ILocalSymbol;
                     if (symbol != null)
                     {
-                        typeSyntax = SyntaxHelper.GenerateTypeSyntax(symbol.Type, model, single.SpanStart, rewriter);
-                        isValueType = symbol.Type.IsValueType;
+                        if (symbol.Type.TypeKind != TypeKind.Error)
+                        {
+                            typeSyntax = SyntaxHelper.GenerateTypeSyntax(symbol.Type, model, single.SpanStart, rewriter);
+                            isValueType = symbol.Type.IsValueType;
+                        }
                     }
 
                     if (typeSyntax == null || typeSyntax.IsMissing)
                     {
                         if ((decl.Type.IsVar || decl.Type.ToString() == "var") && expressionType != null)
                         {
-                            typeSyntax = SyntaxHelper.GenerateTypeSyntax(expressionType, model, decl.SpanStart, rewriter);
-                            isValueType = expressionType.IsValueType;
+                            if (expressionType.TypeKind != TypeKind.Error)
+                            {
+                                typeSyntax = SyntaxHelper.GenerateTypeSyntax(expressionType, model, decl.SpanStart, rewriter);
+                                isValueType = expressionType.IsValueType;
+                            }
                         }
                         else if (!decl.Type.IsVar && decl.Type.ToString() != "var")
                         {
@@ -59,7 +65,7 @@ namespace H5.Translator
                         }
                     }
 
-                    if (typeSyntax == null || typeSyntax.IsMissing || typeSyntax.ToString() == "var" || typeSyntax.ToString() == "?")
+                    if (typeSyntax == null || typeSyntax.IsMissing || typeSyntax.ToString() == "var" || typeSyntax.ToString().Trim() == "?")
                     {
                          // Fallback to dynamic if type is unknown or 'var' (which is invalid without initializer)
                          typeSyntax = SyntaxFactory.ParseTypeName("dynamic");
@@ -79,17 +85,23 @@ namespace H5.Translator
                     var symbol = model.GetDeclaredSymbol(single) as ILocalSymbol;
                     if (symbol != null)
                     {
-                        typeSyntax = SyntaxHelper.GenerateTypeSyntax(symbol.Type, model, single.SpanStart, rewriter);
-                        isValueType = symbol.Type.IsValueType;
+                        if (symbol.Type.TypeKind != TypeKind.Error)
+                        {
+                            typeSyntax = SyntaxHelper.GenerateTypeSyntax(symbol.Type, model, single.SpanStart, rewriter);
+                            isValueType = symbol.Type.IsValueType;
+                        }
                     }
 
                     if ((typeSyntax == null || typeSyntax.IsMissing) && expressionType != null)
                     {
-                        typeSyntax = SyntaxHelper.GenerateTypeSyntax(expressionType, model, varPattern.SpanStart, rewriter);
-                        isValueType = expressionType.IsValueType;
+                        if (expressionType.TypeKind != TypeKind.Error)
+                        {
+                            typeSyntax = SyntaxHelper.GenerateTypeSyntax(expressionType, model, varPattern.SpanStart, rewriter);
+                            isValueType = expressionType.IsValueType;
+                        }
                     }
 
-                    if (typeSyntax == null || typeSyntax.IsMissing || typeSyntax.ToString() == "var" || typeSyntax.ToString() == "?")
+                    if (typeSyntax == null || typeSyntax.IsMissing || typeSyntax.ToString() == "var" || typeSyntax.ToString().Trim() == "?")
                     {
                          typeSyntax = SyntaxFactory.ParseTypeName("dynamic");
                          isValueType = false;
@@ -174,7 +186,14 @@ namespace H5.Translator
 
                 foreach (var p in listPattern.Patterns)
                 {
-                    GetVariables(p, model, rewriter, variables, elementType);
+                    if (p is SlicePatternSyntax)
+                    {
+                        GetVariables(p, model, rewriter, variables, expressionType);
+                    }
+                    else
+                    {
+                        GetVariables(p, model, rewriter, variables, elementType);
+                    }
                 }
             }
             else if (pattern is SlicePatternSyntax slicePattern)
@@ -187,6 +206,15 @@ namespace H5.Translator
             else if (pattern is ParenthesizedPatternSyntax paren)
             {
                 GetVariables(paren.Pattern, model, rewriter, variables, expressionType);
+            }
+            else if (pattern is BinaryPatternSyntax binary)
+            {
+                GetVariables(binary.Left, model, rewriter, variables, expressionType);
+                GetVariables(binary.Right, model, rewriter, variables, expressionType);
+            }
+            else if (pattern is UnaryPatternSyntax unary)
+            {
+                GetVariables(unary.Pattern, model, rewriter, variables, expressionType);
             }
         }
 
@@ -521,6 +549,23 @@ namespace H5.Translator
                             }
 
                             var subCheck = MakeCheck(memberAccess, subPattern.Pattern, model, subType);
+                            condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, subCheck);
+                            index++;
+                        }
+                    }
+                    else
+                    {
+                        int index = 0;
+                        foreach (var subPattern in recursivePattern.PositionalPatternClause.Subpatterns)
+                        {
+                            var fieldName = $"Item{index + 1}";
+                            var memberAccess = SyntaxFactory.MemberAccessExpression(
+                                SyntaxKind.SimpleMemberAccessExpression,
+                                typedExpression,
+                                SyntaxFactory.IdentifierName(fieldName)
+                            );
+
+                            var subCheck = MakeCheck(memberAccess, subPattern.Pattern, model, null);
                             condition = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, condition, subCheck);
                             index++;
                         }
