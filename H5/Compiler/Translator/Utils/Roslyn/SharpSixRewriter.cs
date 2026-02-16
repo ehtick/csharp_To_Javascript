@@ -2377,7 +2377,7 @@ namespace H5.Translator
                 var printMembersModifiers = SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.ProtectedKeyword).WithTrailingTrivia(SyntaxFactory.Space));
                 printMembersModifiers = printMembersModifiers.Add(SyntaxFactory.Token(SyntaxKind.VirtualKeyword).WithTrailingTrivia(SyntaxFactory.Space));
 
-                var sbType = SyntaxFactory.ParseTypeName("global::System.Text.StringBuilder");
+                var sbType = SyntaxFactory.ParseTypeName("System.Text.StringBuilder");
                 var printMembersBody = new List<StatementSyntax>();
 
                 // builder.Append("Prop = "); builder.Append(this.Prop); ...
@@ -2413,7 +2413,9 @@ namespace H5.Translator
                 // var sb = new StringBuilder();
                 toStringBody.Add(SyntaxFactory.LocalDeclarationStatement(SyntaxFactory.VariableDeclaration(SyntaxFactory.IdentifierName("var").WithTrailingTrivia(SyntaxFactory.Space))
                     .WithVariables(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.VariableDeclarator("sb").WithInitializer(SyntaxFactory.EqualsValueClause(
-                        SyntaxFactory.ObjectCreationExpression(sbType).WithArgumentList(SyntaxFactory.ArgumentList())))))));
+                        SyntaxFactory.ObjectCreationExpression(sbType)
+                        .WithNewKeyword(SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                        .WithArgumentList(SyntaxFactory.ArgumentList())))))));
 
                 // sb.Append("TypeName");
                 toStringBody.Add(SyntaxFactory.ExpressionStatement(SyntaxFactory.InvocationExpression(
