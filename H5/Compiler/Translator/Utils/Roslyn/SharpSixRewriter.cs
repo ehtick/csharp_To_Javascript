@@ -2625,6 +2625,59 @@ namespace H5.Translator
 
             markAsAsync = oldMarkAsAsync;
 
+            if (newNode is ParenthesizedLambdaExpressionSyntax lambda && lambda.ReturnType != null)
+            {
+                var parameters = lambda.ParameterList.Parameters;
+                var returnType = lambda.ReturnType;
+
+                bool isVoid = false;
+                if (returnType is PredefinedTypeSyntax pts && pts.Keyword.IsKind(SyntaxKind.VoidKeyword))
+                {
+                    isVoid = true;
+                }
+
+                var typeArguments = new List<TypeSyntax>();
+                foreach (var p in parameters)
+                {
+                    if (p.Type == null)
+                    {
+                        return lambda.WithReturnType(null).WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+                    }
+                    typeArguments.Add(p.Type);
+                }
+
+                if (!isVoid)
+                {
+                    typeArguments.Add(returnType);
+                }
+
+                var baseType = isVoid ? "Action" : "Func";
+
+                TypeSyntax delegateType;
+
+                if (isVoid && typeArguments.Count == 0)
+                {
+                    delegateType = SyntaxFactory.QualifiedName(
+                       SyntaxFactory.IdentifierName(SYSTEM_IDENTIFIER),
+                       SyntaxFactory.IdentifierName("Action"));
+                }
+                else
+                {
+                    delegateType = SyntaxFactory.QualifiedName(
+                       SyntaxFactory.IdentifierName(SYSTEM_IDENTIFIER),
+                       SyntaxFactory.GenericName(baseType)
+                           .WithTypeArgumentList(SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(typeArguments)))
+                    );
+                }
+
+                var cast = SyntaxFactory.CastExpression(
+                    delegateType,
+                    SyntaxFactory.ParenthesizedExpression(lambda.WithReturnType(null))
+                );
+
+                return cast.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+            }
+
             return newNode;
         }
 
