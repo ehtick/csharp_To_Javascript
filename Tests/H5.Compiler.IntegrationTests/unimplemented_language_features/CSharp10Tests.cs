@@ -20,8 +20,8 @@ public class Program
     {
         var p = new Point(1, 2);
         var p2 = p with { X = 3 };
-        Console.WriteLine(p);
-        Console.WriteLine(p2);
+        Console.WriteLine(p.ToString());
+        Console.WriteLine(p2.ToString());
         Console.WriteLine(p.X);
     }
 }

@@ -282,8 +282,9 @@ namespace H5.Translator
             }
 
             bool forceDefCtor = isObjectLiteral && Emitter.Validator.GetObjectCreateMode(typeDef) == 1 && TypeInfo.Ctors.Count == 0;
+            var hasDefaultCtor = TypeInfo.Ctors.Any(c => c.Parameters.Count == 0);
 
-            if (typeDef.IsValueType || forceDefCtor || (TypeInfo.Ctors.Count == 0 && ctorWrappers.Length > 0))
+            if ((typeDef.IsValueType && !hasDefaultCtor) || forceDefCtor || (TypeInfo.Ctors.Count == 0 && ctorWrappers.Length > 0))
             {
                 TypeInfo.Ctors.Add(new ConstructorDeclaration
                 {
