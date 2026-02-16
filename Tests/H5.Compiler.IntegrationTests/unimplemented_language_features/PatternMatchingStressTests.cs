@@ -126,10 +126,6 @@ public class Program
         {
             var csharpCode = @"
 using System;
-namespace System.Runtime.CompilerServices
-{
-    public class IsExternalInit { }
-}
 
 public class Program
 {
