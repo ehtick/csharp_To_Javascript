@@ -119,8 +119,8 @@ namespace H5.VersionMatrix
                 return;
             }
 
-            Console.WriteLine("Fetching h5 runtime versions...");
-            var h5Versions = await GetPackageVersionsAsync("h5");
+            //Console.WriteLine("Fetching h5 runtime versions...");
+            //var h5Versions = await GetPackageVersionsAsync("h5");
 
             Console.WriteLine($"Found {versions.Count} compiler versions.");
 
@@ -128,27 +128,28 @@ namespace H5.VersionMatrix
             {
                 Console.WriteLine($"\nProcessing version {version}...");
 
-                // Find best matching h5 version
-                var h5Version = h5Versions.Where(v => v <= version).Max();
-                if (h5Version == null)
-                {
-                    h5Version = h5Versions.OrderBy(v => v).FirstOrDefault();
-                    if (h5Version == null)
-                    {
-                        Console.WriteLine("No h5 runtime versions found. Skipping.");
-                        continue;
-                    }
-                    Console.WriteLine($"Warning: No h5 version <= {version}. Using oldest available: {h5Version}");
-                }
-                else
-                {
-                    Console.WriteLine($"Selected h5 runtime version {h5Version} for compiler {version}");
-                }
+                //// Find best matching h5 version
+                //var h5Version = h5Versions.Where(v => v <= version).Max();
+                //if (h5Version == null)
+                //{
+                //    h5Version = h5Versions.OrderBy(v => v).FirstOrDefault();
+                //    if (h5Version == null)
+                //    {
+                //        Console.WriteLine("No h5 runtime versions found. Skipping.");
+                //        continue;
+                //    }
+                //    Console.WriteLine($"Warning: No h5 version <= {version}. Using oldest available: {h5Version}");
+                //}
+                //else
+                //{
+                //    Console.WriteLine($"Selected h5 runtime version {h5Version} for compiler {version}");
+                //}
 
                 var versionStr = version.ToNormalizedString();
-                var h5VersionStr = h5Version.ToNormalizedString();
+                //var h5VersionStr = h5Version.ToNormalizedString();
                 var toolPath = Path.Combine(cacheDir.FullName, "tools", versionStr);
-                var versionOutputDir = Path.Combine(output.FullName, versionStr); // Keep compiled output here
+                var workDir = Path.Combine(cacheDir.FullName, "work", versionStr);
+                var versionOutputDir = Path.Combine(project.Directory.FullName, "bin", "Debug", "netstandard2.0", "h5"); // Keep compiled output here
 
                 // 1. Install Tool
                 var executableName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "h5.exe" : "h5";
@@ -165,20 +166,19 @@ namespace H5.VersionMatrix
                 }
 
                 // 2. Prepare Project (Update reference)
-                var workDir = Path.Combine(cacheDir.FullName, "work", versionStr);
-                if (Directory.Exists(workDir)) Directory.Delete(workDir, true);
-                Directory.CreateDirectory(workDir);
+                //if (Directory.Exists(workDir)) Directory.Delete(workDir, true);
+                //Directory.CreateDirectory(workDir);
 
                 // Copy project directory to work dir
-                CopyDirectory(project.Directory, new DirectoryInfo(workDir), output.FullName);
-                var workProjectFile = Path.Combine(workDir, project.Name);
+                //CopyDirectory(project.Directory, new DirectoryInfo(workDir), output.FullName);
+                //var workProjectFile = Path.Combine(workDir, project.Name);
 
                 // Update h5 package reference
-                UpdatePackageReference(workProjectFile, h5VersionStr);
+                //UpdatePackageReference(workProjectFile, h5VersionStr);
 
                 // Restore
-                Console.WriteLine($"Restoring project for version {versionStr} (runtime {h5VersionStr})...");
-                if (!await RunCommandAsync("dotnet", $"restore \"{workProjectFile}\"", workDir))
+                Console.WriteLine($"Restoring project for compiler version {versionStr}...");
+                if (!await RunCommandAsync("dotnet", $"restore \"{project.FullName}\"", project.Directory.FullName))
                 {
                     Console.WriteLine($"Restore failed for version {versionStr}. Skipping.");
                     continue;
@@ -191,7 +191,7 @@ namespace H5.VersionMatrix
                 // Note: h5 tool might output to <output>/h5 or directly to <output>.
                 // We'll inspect the output directory after compilation.
 
-                if (!await RunCommandAsync(h5Executable, $"\"{workProjectFile}\" -o \"{versionOutputDir}\"", workDir))
+                if (!await RunCommandAsync(h5Executable, $"--rebuild --no-server \"{project.FullName}\"", project.Directory.FullName))
                 {
                     Console.WriteLine($"Compilation failed for version {versionStr}.");
                     // We continue to commit even if failed? No, if failed, we probably don't have output.
