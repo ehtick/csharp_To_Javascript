@@ -506,7 +506,9 @@ namespace H5.Translator
 
             node = (RefExpressionSyntax)base.VisitRefExpression(node);
 
-            if (symbol is ILocalSymbol ls && ls.IsRef || symbol is IMethodSymbol ms && ms.ReturnsByRef)
+            if (symbol is ILocalSymbol ls && ls.IsRef ||
+                symbol is IMethodSymbol ms && ms.ReturnsByRef ||
+                symbol is IPropertySymbol ps && ps.RefKind != RefKind.None)
             {
                 return node.Expression.NormalizeWhitespace().WithTrailingTrivia(node.GetTrailingTrivia()).WithLeadingTrivia(node.GetLeadingTrivia());
             }
