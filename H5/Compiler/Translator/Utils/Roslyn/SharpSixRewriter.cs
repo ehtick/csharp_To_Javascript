@@ -1495,7 +1495,28 @@ namespace H5.Translator
 
         public override SyntaxNode VisitParameter(ParameterSyntax node)
         {
+            var originalNode = node;
             node = (ParameterSyntax)base.VisitParameter(node);
+
+            // Fix for C# 13/14 inferred type for ref/out parameters in lambdas: (ref x) => ...
+            // NRefactory 5 requires explicit type: (ref int x) => ...
+            if (node.Type == null && originalNode.Parent is ParameterListSyntax && originalNode.Parent.Parent is LambdaExpressionSyntax)
+            {
+                bool hasRef = node.Modifiers.Any(m => m.IsKind(SyntaxKind.RefKeyword));
+                bool hasOut = node.Modifiers.Any(m => m.IsKind(SyntaxKind.OutKeyword));
+                // 'in' is handled below, but we need the type for it too if it's missing
+                bool hasIn = node.Modifiers.Any(m => m.IsKind(SyntaxKind.InKeyword));
+
+                if (hasRef || hasOut || hasIn)
+                {
+                    var symbol = semanticModel.GetDeclaredSymbol(originalNode);
+                    if (symbol != null)
+                    {
+                        var typeSyntax = SyntaxHelper.GenerateTypeSyntax(symbol.Type, semanticModel, originalNode.SpanStart, this);
+                        node = node.WithType(typeSyntax).WithIdentifier(node.Identifier.WithLeadingTrivia(SyntaxFactory.Space));
+                    }
+                }
+            }
 
             var idx = node.Modifiers.IndexOf(SyntaxKind.InKeyword);
             if (idx > -1)
