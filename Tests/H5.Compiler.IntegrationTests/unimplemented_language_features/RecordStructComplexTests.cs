@@ -67,9 +67,32 @@ public class Program
     public static void Main()
     {
         var p = new Point(1, 2);
-        // Default ToString for record struct prints members
-        // H5 currently lacks synthesized ToString for records, so it prints type name
-        // We verify it runs without error.
+        Console.WriteLine(p.ToString());
+    }
+}
+""";
+            await RunTest(code);
+        }
+
+        [TestMethod]
+        public async Task RecordClassToString()
+        {
+             var code = """
+using System;
+using System.Runtime.CompilerServices;
+
+namespace System.Runtime.CompilerServices
+{
+    internal static class IsExternalInit {}
+}
+
+public record Person(string Name, int Age);
+
+public class Program
+{
+    public static void Main()
+    {
+        var p = new Person("Alice", 30);
         Console.WriteLine(p.ToString());
     }
 }
