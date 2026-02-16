@@ -37,7 +37,10 @@ public class Program
 {
     public static void Main()
     {
+        var realArr  = new int[] { 1, 2, 3 };
         IntArray arr = new int[] { 1, 2, 3 };
+        Console.WriteLine(realArr.Length);
+        Console.WriteLine(realArr[0]);
         Console.WriteLine(arr.Length);
         Console.WriteLine(arr[0]);
     }

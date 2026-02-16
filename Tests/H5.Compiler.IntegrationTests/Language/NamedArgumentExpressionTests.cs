@@ -38,7 +38,7 @@ public class Program
         }
 
         [TestMethod]
-        public async Task NamedArguments_With_Dynamic()
+        public async Task NamedArgumentsWithDynamic()
         {
              // Dynamic often fails in tests due to environment, so we skip Roslyn validation
              // to test H5 emission specifically.
@@ -62,5 +62,27 @@ public class Program
             await RunTest(code, waitForOutput: null, skipRoslyn: true);
         }
 
+        [TestMethod]
+        public async Task NamedArgumentsMethodInvocationOnDynamic()
+        {
+            var code = """
+using System;
+
+public class Program
+{
+    public static void Main()
+    {
+        dynamic d = new Program();
+        d.Foo(value: 10);
+    }
+
+    public void Foo(int value)
+    {
+        Console.WriteLine(value);
+    }
+}
+""";
+            await RunTest(code, "10", skipRoslyn: true);
+        }
     }
 }

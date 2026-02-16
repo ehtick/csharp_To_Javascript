@@ -7,7 +7,6 @@ namespace H5.Compiler.IntegrationTests.UnimplementedLanguageFeatures
     public class CSharp10Tests : IntegrationTestBase
     {
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task RecordStructs()
         {
             var code = """
@@ -31,7 +30,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task StructParameterlessConstructor()
         {
             var code = """
@@ -59,7 +57,6 @@ public class Program
         }
 
         [TestMethod]
-        // [Ignore("Not implemented yet")]
         public async Task FileScopedNamespace()
         {
             // RoslynCompiler (CSharpScript) does not support file-scoped namespaces in scripts.
@@ -96,7 +93,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task ExtendedPropertyPatterns()
         {
             var code = """
@@ -165,7 +161,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task SealedToStringInRecords()
         {
             var code = """
