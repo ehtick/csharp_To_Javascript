@@ -2174,6 +2174,11 @@ namespace H5.Translator
             node = (PropertyDeclarationSyntax)base.VisitPropertyDeclaration(node);
             var newNode = node;
 
+            if (newNode.Modifiers.IndexOf(SyntaxKind.RequiredKeyword) > -1)
+            {
+                newNode = newNode.WithModifiers(newNode.Modifiers.RemoveAt(newNode.Modifiers.IndexOf(SyntaxKind.RequiredKeyword)));
+            }
+
             if (newNode.Modifiers.IndexOf(SyntaxKind.ReadOnlyKeyword) > -1)
             {
                 newNode = newNode.WithModifiers(newNode.Modifiers.RemoveAt(newNode.Modifiers.IndexOf(SyntaxKind.ReadOnlyKeyword)));
@@ -2264,6 +2269,11 @@ namespace H5.Translator
         public override SyntaxNode VisitFieldDeclaration(FieldDeclarationSyntax node)
         {
             node = base.VisitFieldDeclaration(node) as FieldDeclarationSyntax;
+
+            if (node.Modifiers.IndexOf(SyntaxKind.RequiredKeyword) > -1)
+            {
+                node = node.WithModifiers(node.Modifiers.RemoveAt(node.Modifiers.IndexOf(SyntaxKind.RequiredKeyword)));
+            }
 
             if (node.Modifiers.IndexOf(SyntaxKind.PrivateKeyword) > -1 && node.Modifiers.IndexOf(SyntaxKind.ProtectedKeyword) > -1)
             {
