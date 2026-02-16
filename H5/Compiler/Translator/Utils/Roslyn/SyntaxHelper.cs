@@ -378,6 +378,14 @@ namespace H5.Translator
 
         public static TypeSyntax GenerateTypeSyntax(ITypeSymbol type, SemanticModel model, int pos, SharpSixRewriter rewriter)
         {
+            if (type is IArrayTypeSymbol arrayType)
+            {
+                var elementTypeSyntax = GenerateTypeSyntax(arrayType.ElementType, model, pos, rewriter);
+                var rankSpecifier = SyntaxFactory.ArrayRankSpecifier(SyntaxFactory.SeparatedList<ExpressionSyntax>(Enumerable.Repeat(SyntaxFactory.OmittedArraySizeExpression(), arrayType.Rank)));
+                return SyntaxFactory.ArrayType(elementTypeSyntax)
+                    .WithRankSpecifiers(SyntaxFactory.SingletonList(rankSpecifier));
+            }
+
             if (type.IsTupleType)
             {
                 var elements = ((INamedTypeSymbol)type).TupleElements;
@@ -424,17 +432,6 @@ namespace H5.Translator
                     types.Add(GenerateTypeSyntax(el, model, pos, rewriter));
                 }
 
-                if (type.OriginalDefinition != null && type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
-                {
-                    return SyntaxFactory.IdentifierName(type.ToMinimalDisplayString(
-                            model,
-                            pos,
-                            new SymbolDisplayFormat(
-                                genericsOptions: SymbolDisplayGenericsOptions.None
-                            )
-                        ));
-                }
-
                 if (types.Count > 0)
                 {
                     string gtypeName;
@@ -446,13 +443,7 @@ namespace H5.Translator
                     }
                     else
                     {
-                        gtypeName = type.ToMinimalDisplayString(
-                              model,
-                              pos,
-                              new SymbolDisplayFormat(
-                                  genericsOptions: SymbolDisplayGenericsOptions.None
-                              )
-                          );
+                        gtypeName = type.GetFullyQualifiedNameAndValidate(model, pos, false);
                     }
 
                     if (model != null)
@@ -481,9 +472,7 @@ namespace H5.Translator
                 return SyntaxFactory.QualifiedName((NameSyntax)parent, SyntaxFactory.IdentifierName(name));
             }
 
-            var format = SymbolDisplayFormat.MinimallyQualifiedFormat
-                .WithMiscellaneousOptions(SymbolDisplayFormat.MinimallyQualifiedFormat.MiscellaneousOptions & ~SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
-            return SyntaxFactory.ParseTypeName(type.ToMinimalDisplayString(model, pos, format));
+            return SyntaxFactory.ParseTypeName(type.GetFullyQualifiedNameAndValidate(model, pos));
         }
 
         /// <summary>

@@ -2311,6 +2311,12 @@ namespace H5.Translator
             {
                 hasStaticUsingOrAliases = true;
             }
+
+            if (node.StaticKeyword.IsKind(SyntaxKind.StaticKeyword) || node.Alias != null)
+            {
+                return null;
+            }
+
             return base.VisitUsingDirective(node);
         }
 
