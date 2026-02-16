@@ -491,6 +491,23 @@ namespace H5.Translator
             throw new NotSupportedException(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Ref returns and locals are not supported", semanticModel.SyntaxTree.FilePath, node.ToString()));
         }
 
+        public override SyntaxNode VisitForEachStatement(ForEachStatementSyntax node)
+        {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitForEachStatement(node);
+            }
+
+            var info = semanticModel.GetForEachStatementInfo(node);
+            if (info.GetEnumeratorMethod != null && info.GetEnumeratorMethod.IsExtensionMethod)
+            {
+                var mapped = semanticModel.SyntaxTree.GetLineSpan(node.Span);
+                throw new NotSupportedException(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Extension GetEnumerator is not supported", semanticModel.SyntaxTree.FilePath, node.ToString()));
+            }
+
+            return base.VisitForEachStatement(node);
+        }
+
         public override SyntaxNode VisitRefType(RefTypeSyntax node)
         {
             node = (RefTypeSyntax)base.VisitRefType(node);
@@ -2243,6 +2260,31 @@ namespace H5.Translator
                 return base.VisitIdentifierName(node);
             }
 
+            // Check if nint/nuint are used as identifiers (variables/members)
+            if (node.Identifier.ValueText == "nint" || node.Identifier.ValueText == "nuint")
+            {
+                var sym = semanticModel.GetSymbolInfo(node).Symbol;
+                if (sym == null || !(sym.Kind == SymbolKind.Local || sym.Kind == SymbolKind.Field || sym.Kind == SymbolKind.Parameter || sym.Kind == SymbolKind.Property || sym.Kind == SymbolKind.Method))
+                {
+                    if (node.Identifier.ValueText == "nint")
+                    {
+                        return SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.IntKeyword))
+                            .WithLeadingTrivia(node.GetLeadingTrivia())
+                            .WithTrailingTrivia(node.GetTrailingTrivia());
+                    }
+                    else if (node.Identifier.ValueText == "nuint")
+                    {
+                        return SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.UIntKeyword))
+                            .WithLeadingTrivia(node.GetLeadingTrivia())
+                            .WithTrailingTrivia(node.GetTrailingTrivia());
+                    }
+                }
+            }
+            {
+                // Detached node
+                return base.VisitIdentifierName(node);
+            }
+
             ISymbol symbol = null;
             try
             {
@@ -3149,6 +3191,252 @@ namespace H5.Translator
             else
             {
                 classDecl = classDecl.WithBaseList(classDecl.BaseList.AddTypes(cloneableType));
+            }
+
+            // Synthesize Equality Members
+            bool synthesizeEquals = !node.Members.OfType<MethodDeclarationSyntax>().Any(m => m.Identifier.ValueText == "Equals" && m.ParameterList.Parameters.Count == 1);
+            if (synthesizeEquals)
+            {
+                TypeSyntax currentTypeSyntax;
+                if (node.TypeParameterList != null && node.TypeParameterList.Parameters.Count > 0)
+                {
+                    currentTypeSyntax = SyntaxFactory.GenericName(
+                        node.Identifier,
+                        SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList<TypeSyntax>(
+                            node.TypeParameterList.Parameters.Select(p => SyntaxFactory.IdentifierName(p.Identifier))
+                        )));
+                }
+                else
+                {
+                    currentTypeSyntax = SyntaxFactory.IdentifierName(node.Identifier);
+                }
+
+                var typeWithSpace = currentTypeSyntax.WithTrailingTrivia(SyntaxFactory.Space);
+
+                // Add System.IEquatable<T>
+                var equatableType = SyntaxFactory.SimpleBaseType(
+                    SyntaxFactory.QualifiedName(
+                        SyntaxFactory.ParseName("global::System"),
+                        SyntaxFactory.GenericName("IEquatable").WithTypeArgumentList(SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(currentTypeSyntax)))
+                    ));
+
+                if (classDecl.BaseList == null)
+                {
+                    classDecl = classDecl.WithBaseList(SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(equatableType)));
+                }
+                else
+                {
+                    classDecl = classDecl.WithBaseList(classDecl.BaseList.AddTypes(equatableType));
+                }
+
+                // Equals(object obj)
+                var equalsObjBody = SyntaxFactory.Block(
+                    SyntaxFactory.LocalDeclarationStatement(
+                        SyntaxFactory.VariableDeclaration(typeWithSpace)
+                        .WithVariables(SyntaxFactory.SingletonSeparatedList(
+                            SyntaxFactory.VariableDeclarator("other").WithInitializer(
+                                SyntaxFactory.EqualsValueClause(
+                                    SyntaxFactory.BinaryExpression(SyntaxKind.AsExpression, SyntaxFactory.IdentifierName("obj"), currentTypeSyntax)
+                                    .WithOperatorToken(SyntaxFactory.Token(SyntaxKind.AsKeyword).WithLeadingTrivia(SyntaxFactory.Space).WithTrailingTrivia(SyntaxFactory.Space))
+                                )
+                            )
+                        ))
+                    ),
+                    SyntaxFactory.ReturnStatement(
+                        SyntaxFactory.BinaryExpression(
+                            SyntaxKind.LogicalAndExpression,
+                            SyntaxFactory.BinaryExpression(SyntaxKind.NotEqualsExpression, SyntaxFactory.IdentifierName("other"), SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)),
+                            SyntaxFactory.InvocationExpression(
+                                SyntaxFactory.IdentifierName("Equals"),
+                                SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.IdentifierName("other"))))
+                            )
+                        )
+                    )
+                    .WithReturnKeyword(SyntaxFactory.Token(SyntaxKind.ReturnKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                );
+
+                var equalsObj = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword).WithTrailingTrivia(SyntaxFactory.Space)), "Equals")
+                    .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)).Add(SyntaxFactory.Token(SyntaxKind.OverrideKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
+                    .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Parameter(SyntaxFactory.Identifier("obj")).WithType(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.ObjectKeyword).WithTrailingTrivia(SyntaxFactory.Space))))))
+                    .WithBody(equalsObjBody);
+
+                classDecl = classDecl.AddMembers(equalsObj);
+
+                // Equals(T other)
+                var equalsTBodyStatements = new List<StatementSyntax>();
+                // if (ReferenceEquals(null, other)) return false;
+                equalsTBodyStatements.Add(SyntaxFactory.IfStatement(
+                    SyntaxFactory.InvocationExpression(
+                         SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ParseName("global::System.Object"), SyntaxFactory.IdentifierName("ReferenceEquals")),
+                         SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList<ArgumentSyntax>(new SyntaxNodeOrToken[] {
+                             SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)),
+                             SyntaxFactory.Token(SyntaxKind.CommaToken),
+                             SyntaxFactory.Argument(SyntaxFactory.IdentifierName("other"))
+                         }))
+                    ),
+                    SyntaxFactory.ReturnStatement(SyntaxFactory.LiteralExpression(SyntaxKind.FalseLiteralExpression)).WithReturnKeyword(SyntaxFactory.Token(SyntaxKind.ReturnKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                )
+                .WithIfKeyword(SyntaxFactory.Token(SyntaxKind.IfKeyword).WithTrailingTrivia(SyntaxFactory.Space)));
+
+                 // if (ReferenceEquals(this, other)) return true;
+                equalsTBodyStatements.Add(SyntaxFactory.IfStatement(
+                    SyntaxFactory.InvocationExpression(
+                         SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ParseName("global::System.Object"), SyntaxFactory.IdentifierName("ReferenceEquals")),
+                         SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList<ArgumentSyntax>(new SyntaxNodeOrToken[] {
+                             SyntaxFactory.Argument(SyntaxFactory.ThisExpression()),
+                             SyntaxFactory.Token(SyntaxKind.CommaToken),
+                             SyntaxFactory.Argument(SyntaxFactory.IdentifierName("other"))
+                         }))
+                    ),
+                    SyntaxFactory.ReturnStatement(SyntaxFactory.LiteralExpression(SyntaxKind.TrueLiteralExpression)).WithReturnKeyword(SyntaxFactory.Token(SyntaxKind.ReturnKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                )
+                .WithIfKeyword(SyntaxFactory.Token(SyntaxKind.IfKeyword).WithTrailingTrivia(SyntaxFactory.Space)));
+
+                ExpressionSyntax expr = SyntaxFactory.LiteralExpression(SyntaxKind.TrueLiteralExpression);
+
+                foreach (var param in node.ParameterList?.Parameters ?? SyntaxFactory.SeparatedList<ParameterSyntax>())
+                {
+                    var propName = param.Identifier.ValueText;
+                    var propType = param.Type;
+
+                    // EqualityComparer<PropType>.Default.Equals(this.Prop, other.Prop)
+                    var comparer = SyntaxFactory.MemberAccessExpression(
+                        SyntaxKind.SimpleMemberAccessExpression,
+                        SyntaxFactory.QualifiedName(
+                            SyntaxFactory.ParseName("global::System.Collections.Generic"),
+                            SyntaxFactory.GenericName("EqualityComparer").WithTypeArgumentList(SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(propType)))
+                        ),
+                        SyntaxFactory.IdentifierName("Default")
+                    );
+
+                    var equalsCall = SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, comparer, SyntaxFactory.IdentifierName("Equals")),
+                        SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList<ArgumentSyntax>(new SyntaxNodeOrToken[] {
+                            SyntaxFactory.Argument(SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(propName))),
+                            SyntaxFactory.Token(SyntaxKind.CommaToken),
+                            SyntaxFactory.Argument(SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.IdentifierName("other"), SyntaxFactory.IdentifierName(propName)))
+                        }))
+                    );
+
+                    expr = SyntaxFactory.BinaryExpression(SyntaxKind.LogicalAndExpression, expr, equalsCall);
+                }
+
+                equalsTBodyStatements.Add(SyntaxFactory.ReturnStatement(expr).WithReturnKeyword(SyntaxFactory.Token(SyntaxKind.ReturnKeyword).WithTrailingTrivia(SyntaxFactory.Space)));
+
+                var equalsT = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword).WithTrailingTrivia(SyntaxFactory.Space)), "Equals")
+                    .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
+                    .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Parameter(SyntaxFactory.Identifier("other")).WithType(typeWithSpace))))
+                    .WithBody(SyntaxFactory.Block(equalsTBodyStatements));
+
+                classDecl = classDecl.AddMembers(equalsT);
+
+                // GetHashCode
+                var hashCodeBodyStatements = new List<StatementSyntax>();
+                // var hashCode = -987654321;
+
+                hashCodeBodyStatements.Add(SyntaxFactory.LocalDeclarationStatement(
+                    SyntaxFactory.VariableDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.IntKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
+                    .WithVariables(SyntaxFactory.SingletonSeparatedList(
+                        SyntaxFactory.VariableDeclarator("hashCode").WithInitializer(SyntaxFactory.EqualsValueClause(SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(-987654321))))
+                    ))
+                ));
+
+                foreach (var param in node.ParameterList?.Parameters ?? SyntaxFactory.SeparatedList<ParameterSyntax>())
+                {
+                    var propName = param.Identifier.ValueText;
+                    var propType = param.Type;
+
+                    var comparer = SyntaxFactory.MemberAccessExpression(
+                        SyntaxKind.SimpleMemberAccessExpression,
+                        SyntaxFactory.QualifiedName(
+                            SyntaxFactory.ParseName("global::System.Collections.Generic"),
+                            SyntaxFactory.GenericName("EqualityComparer").WithTypeArgumentList(SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(propType)))
+                        ),
+                        SyntaxFactory.IdentifierName("Default")
+                    );
+
+                    var getHashCodeCall = SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, comparer, SyntaxFactory.IdentifierName("GetHashCode")),
+                        SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(
+                            SyntaxFactory.Argument(SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ThisExpression(), SyntaxFactory.IdentifierName(propName)))
+                        ))
+                    );
+
+                    // hashCode = (hashCode * -1521134295) + getHashCodeCall;
+                    var calc = SyntaxFactory.BinaryExpression(
+                        SyntaxKind.AddExpression,
+                        SyntaxFactory.ParenthesizedExpression(
+                            SyntaxFactory.BinaryExpression(
+                                SyntaxKind.MultiplyExpression,
+                                SyntaxFactory.IdentifierName("hashCode"),
+                                SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(-1521134295))
+                            )
+                        ),
+                        getHashCodeCall
+                    );
+
+                    hashCodeBodyStatements.Add(SyntaxFactory.ExpressionStatement(
+                        SyntaxFactory.AssignmentExpression(SyntaxKind.SimpleAssignmentExpression, SyntaxFactory.IdentifierName("hashCode"), calc)
+                    ));
+                }
+
+                hashCodeBodyStatements.Add(SyntaxFactory.ReturnStatement(SyntaxFactory.IdentifierName("hashCode")).WithReturnKeyword(SyntaxFactory.Token(SyntaxKind.ReturnKeyword).WithTrailingTrivia(SyntaxFactory.Space)));
+
+                var getHashCode = SyntaxFactory.MethodDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.IntKeyword).WithTrailingTrivia(SyntaxFactory.Space)), "GetHashCode")
+                    .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)).Add(SyntaxFactory.Token(SyntaxKind.OverrideKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
+                    .WithBody(SyntaxFactory.Block(hashCodeBodyStatements));
+
+                classDecl = classDecl.AddMembers(getHashCode);
+
+                // Operators
+                var opEq = SyntaxFactory.OperatorDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword).WithTrailingTrivia(SyntaxFactory.Space)), SyntaxFactory.Token(SyntaxKind.EqualsEqualsToken).WithTrailingTrivia(SyntaxFactory.Space))
+                    .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)).Add(SyntaxFactory.Token(SyntaxKind.StaticKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
+                    .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList<ParameterSyntax>(new SyntaxNodeOrToken[] {
+                        SyntaxFactory.Parameter(SyntaxFactory.Identifier("left")).WithType(typeWithSpace),
+                        SyntaxFactory.Token(SyntaxKind.CommaToken),
+                        SyntaxFactory.Parameter(SyntaxFactory.Identifier("right")).WithType(typeWithSpace)
+                    })))
+                    .WithBody(SyntaxFactory.Block(
+                        SyntaxFactory.ReturnStatement(
+                            SyntaxFactory.InvocationExpression(
+                                SyntaxFactory.MemberAccessExpression(
+                                    SyntaxKind.SimpleMemberAccessExpression,
+                                    SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression,
+                                        SyntaxFactory.QualifiedName(
+                                            SyntaxFactory.ParseName("global::System.Collections.Generic"),
+                                            SyntaxFactory.GenericName("EqualityComparer").WithTypeArgumentList(SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(currentTypeSyntax)))
+                                        ),
+                                        SyntaxFactory.IdentifierName("Default")),
+                                    SyntaxFactory.IdentifierName("Equals")),
+                                SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList<ArgumentSyntax>(new SyntaxNodeOrToken[] {
+                                    SyntaxFactory.Argument(SyntaxFactory.IdentifierName("left")),
+                                    SyntaxFactory.Token(SyntaxKind.CommaToken),
+                                    SyntaxFactory.Argument(SyntaxFactory.IdentifierName("right"))
+                                }))
+                            )
+                        )
+                        .WithReturnKeyword(SyntaxFactory.Token(SyntaxKind.ReturnKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                    ));
+
+                 var opNeq = SyntaxFactory.OperatorDeclaration(SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword).WithTrailingTrivia(SyntaxFactory.Space)), SyntaxFactory.Token(SyntaxKind.ExclamationEqualsToken).WithTrailingTrivia(SyntaxFactory.Space))
+                    .WithModifiers(SyntaxTokenList.Create(SyntaxFactory.Token(SyntaxKind.PublicKeyword).WithTrailingTrivia(SyntaxFactory.Space)).Add(SyntaxFactory.Token(SyntaxKind.StaticKeyword).WithTrailingTrivia(SyntaxFactory.Space)))
+                    .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList<ParameterSyntax>(new SyntaxNodeOrToken[] {
+                        SyntaxFactory.Parameter(SyntaxFactory.Identifier("left")).WithType(typeWithSpace),
+                        SyntaxFactory.Token(SyntaxKind.CommaToken),
+                        SyntaxFactory.Parameter(SyntaxFactory.Identifier("right")).WithType(typeWithSpace)
+                    })))
+                    .WithBody(SyntaxFactory.Block(
+                        SyntaxFactory.ReturnStatement(
+                            SyntaxFactory.PrefixUnaryExpression(SyntaxKind.LogicalNotExpression,
+                                SyntaxFactory.ParenthesizedExpression(
+                                    SyntaxFactory.BinaryExpression(SyntaxKind.EqualsExpression, SyntaxFactory.IdentifierName("left"), SyntaxFactory.IdentifierName("right"))
+                                )
+                            )
+                        )
+                        .WithReturnKeyword(SyntaxFactory.Token(SyntaxKind.ReturnKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+                    ));
+
+                classDecl = classDecl.AddMembers(opEq, opNeq);
             }
 
             // return VisitClassDeclaration(classDecl);

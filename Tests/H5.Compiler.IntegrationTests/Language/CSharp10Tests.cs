@@ -31,6 +31,8 @@ public class Program
             await RunTest(code);
         }
 
+
+
         [TestMethod]
         public async Task FileScopedNamespaces()
         {
@@ -144,7 +146,10 @@ public class Program
         Console.WriteLine(f(true));
         Console.WriteLine(f(false));
 
-        Action<string> a = (ref string s) => s = s.ToUpper(); // Ref parameter? H5 might struggle with ref in lambdas yet
+        var a = (ref string s) => s = s.ToUpper();
+        string val = "hello";
+        a(ref val);
+        Console.WriteLine(val);
     }
 }
 """;
