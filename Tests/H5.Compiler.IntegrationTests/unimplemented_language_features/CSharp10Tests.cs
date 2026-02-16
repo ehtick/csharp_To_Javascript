@@ -166,6 +166,8 @@ public class Program
             var code = """
 using System;
 
+namespace System.Runtime.CompilerServices { internal static class IsExternalInit {} }
+
 public record Person(string Name)
 {
     public sealed override string ToString() => Name;
@@ -182,7 +184,9 @@ public class Program
     }
 }
 """;
-            await RunTest(code);
+            var result = await RunTest(code, skipRoslyn: true);
+
+            Assert.AreEqual("Alice", result.Trim());
         }
 
         [TestMethod]
