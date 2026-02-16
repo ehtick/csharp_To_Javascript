@@ -7,7 +7,6 @@ namespace H5.Compiler.IntegrationTests.UnimplementedLanguageFeatures
     public class CSharp13Tests : IntegrationTestBase
     {
         [TestMethod]
-        [Ignore("Not implemented yet")]
         public async Task ParamsCollections()
         {
             var code = """
