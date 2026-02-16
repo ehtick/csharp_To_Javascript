@@ -647,7 +647,7 @@ namespace H5.Translator
 
             if (type.IsTupleType)
             {
-                var createExpression = SyntaxFactory.ObjectCreationExpression(SyntaxFactory.GenericName(SyntaxFactory.Identifier("System.ValueTuple"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types))));
+                var createExpression = SyntaxFactory.ObjectCreationExpression(SyntaxFactory.QualifiedName(SyntaxFactory.IdentifierName("System"), SyntaxFactory.GenericName(SyntaxFactory.Identifier("ValueTuple"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types)))));
                 var argExpressions = new List<ArgumentSyntax>();
 
                 foreach (var arg in node.Arguments)
@@ -672,7 +672,7 @@ namespace H5.Translator
                 types.Add(el.Type);
             }
 
-            var newType = SyntaxFactory.GenericName(SyntaxFactory.Identifier("System.ValueTuple"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types)));
+            var newType = SyntaxFactory.QualifiedName(SyntaxFactory.IdentifierName("System"), SyntaxFactory.GenericName(SyntaxFactory.Identifier("ValueTuple"), SyntaxFactory.TypeArgumentList(SyntaxFactory.SeparatedList(types))));
 
             return newType.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia()); ;
         }
