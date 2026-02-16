@@ -1131,9 +1131,6 @@ namespace H5.Translator
                 var tempFile = Path.GetTempFileName();
                 File.WriteAllText(tempFile, source);
                 Logger.LogError(ex, $"Error minifiying code. Saved output to {tempFile}");
-                Console.WriteLine("JS SOURCE START");
-                Console.WriteLine(source);
-                Console.WriteLine("JS SOURCE END");
                 throw;
             }
 
