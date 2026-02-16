@@ -36,7 +36,6 @@ namespace System
 
         public static Range All => new Range(Index.Start, Index.End);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public (int Offset, int Length) GetOffsetAndLength(int length)
         {
             int start = Start.GetOffset(length);

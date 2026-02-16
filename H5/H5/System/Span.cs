@@ -8,7 +8,6 @@ namespace System
         internal readonly int _offset;
         internal readonly int _length;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Span(T[] array)
         {
             _array = array;
@@ -16,7 +15,6 @@ namespace System
             _length = array != null ? array.Length : 0;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Span(T[] array, int start, int length)
         {
              _array = array;
@@ -28,7 +26,6 @@ namespace System
 
         public ref T this[int index]
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
                 if ((uint)index >= (uint)_length)

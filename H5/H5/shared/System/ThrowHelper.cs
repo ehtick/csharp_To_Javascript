@@ -367,7 +367,6 @@ namespace System
         // Allow nulls for reference types and Nullable<U>, but not for value types.
         // Aggressively inline so the jit evaluates the if in place and either drops the call altogether
         // Or just leaves null test and call to the Non-returning ThrowHelper.ThrowArgumentNullException
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void IfNullAndNullsAreIllegalThenThrow<T>(object value, ExceptionArgument argName)
         {
             // Note that default(T) is not equal to null for value types except when T is Nullable<U>.
@@ -376,7 +375,6 @@ namespace System
         }
 
         // This function will convert an ExceptionArgument enum value to the argument name string.
-        [MethodImpl(MethodImplOptions.NoInlining)]
         private static string GetArgumentName(ExceptionArgument argument)
         {
             Debug.Assert(Enum.IsDefined(typeof(ExceptionArgument), argument),
@@ -386,7 +384,6 @@ namespace System
         }
 
         // This function will convert an ExceptionResource enum value to the resource string.
-        [MethodImpl(MethodImplOptions.NoInlining)]
         private static string GetResourceString(ExceptionResource resource)
         {
             Debug.Assert(Enum.IsDefined(typeof(ExceptionResource), resource),

@@ -24,7 +24,6 @@ namespace System
 
         // This method is used to decide if we need to append the exception message parameters to the message when calling SR.Format.
         // by default it returns false.
-        [MethodImpl(MethodImplOptions.NoInlining)]
         private static bool UsingResourceKeys()
         {
             return false;

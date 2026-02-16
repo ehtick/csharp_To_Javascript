@@ -6,7 +6,6 @@ namespace System
     {
         private readonly int _value;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Index(int value, bool fromEnd = false)
         {
             if (value < 0)
@@ -23,7 +22,6 @@ namespace System
         public static Index Start => new Index(0);
         public static Index End => new Index(~0);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Index FromStart(int value)
         {
             if (value < 0)
@@ -34,7 +32,6 @@ namespace System
             return new Index(value);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Index FromEnd(int value)
         {
             if (value < 0)
@@ -58,7 +55,6 @@ namespace System
 
         public bool IsFromEnd => _value < 0;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetOffset(int length)
         {
             int offset = _value;

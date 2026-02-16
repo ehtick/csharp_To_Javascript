@@ -8,7 +8,6 @@ namespace System
         internal readonly int _offset;
         internal readonly int _length;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadOnlySpan(T[] array)
         {
             _array = array;
@@ -16,7 +15,6 @@ namespace System
             _length = array != null ? array.Length : 0;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadOnlySpan(T[] array, int start, int length)
         {
              _array = array;
@@ -24,7 +22,6 @@ namespace System
              _length = length;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadOnlySpan(Span<T> span)
         {
              _array = span._array;
@@ -36,7 +33,6 @@ namespace System
 
         public ref readonly T this[int index]
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
                 if ((uint)index >= (uint)_length)

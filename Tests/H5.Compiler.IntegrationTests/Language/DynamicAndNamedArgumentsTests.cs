@@ -115,7 +115,6 @@ public class Program
         }
 
         [TestMethod]
-        [Ignore("Disabled for now as Roslyn is failing to run with error CS0656: Missing compiler required member 'Microsoft.CSharp.RuntimeBinder.Binder.InvokeMember'")]
         public async Task Dynamic_Basic()
         {
             var code = @"
@@ -132,7 +131,8 @@ public class Program
         Console.WriteLine(d);
     }
 }";
-            await RunTest(code);
+            var output = await RunTest(code, skipRoslyn: true);
+            Assert.AreEqual(output, "10\nHello");
         }
 
         [TestMethod]
