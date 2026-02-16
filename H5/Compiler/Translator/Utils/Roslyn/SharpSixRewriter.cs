@@ -2566,7 +2566,7 @@ namespace H5.Translator
                 }
                 else if (target is ITypeSymbol ts)
                 {
-                    return SyntaxFactory.ParseTypeName(ts.GetFullyQualifiedNameAndValidate(semanticModel, node.SpanStart)).WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
+                    return SyntaxHelper.GenerateTypeSyntax(ts, semanticModel, node.SpanStart, this).WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
                 }
             }
 
@@ -5417,7 +5417,7 @@ namespace H5.Translator
                              var symbolInfo = semanticModel.GetSymbolInfo(identifier);
                              var symbol = symbolInfo.Symbol;
 
-                             if (symbol != null && symbol is IParameterSymbol ps && parameterSymbols.ContainsValue(ps))
+                             if (symbol != null && symbol is IParameterSymbol ps && parameterSymbols.Values.Any(p => SymbolEqualityComparer.Default.Equals(p, ps)))
                              {
                                  // Found usage. Check if it's a capture scenario.
                                  if (ShouldUseFieldForCapturedParameter(identifier))
