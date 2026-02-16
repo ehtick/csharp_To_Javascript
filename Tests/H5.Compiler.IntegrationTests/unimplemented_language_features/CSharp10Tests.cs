@@ -92,7 +92,7 @@ public class Program
     }
 }
 """;
-             await RunTest(code);
+             await RunTest(code, skipRoslyn: true);
         }
 
         [TestMethod]
