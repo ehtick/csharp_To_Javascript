@@ -73,31 +73,6 @@ public class Program
             await RunTest(code);
         }
 
-
-
-        [TestMethod]
-        [Ignore("Not implemented yet")]
-        public async Task RefReadonlyParameters()
-        {
-            var code = """
-using System;
-
-public class Program
-{
-    public static void Main()
-    {
-        int x = 10;
-        Print(in x);
-        Print2(ref x);
-    }
-
-    static void Print(in int x) => Console.WriteLine(x);
-    static void Print2(ref readonly int x) => Console.WriteLine(x);
-}
-""";
-            await RunTest(code);
-        }
-
         [TestMethod]
         [Ignore("Not implemented yet")]
         public async Task ExperimentalAttribute()
