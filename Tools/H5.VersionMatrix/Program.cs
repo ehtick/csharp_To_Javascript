@@ -6,6 +6,7 @@ using System.CommandLine.Parsing;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,23 +43,28 @@ namespace H5.VersionMatrix
                 name: "--max-version",
                 description: "Maximum version of the compiler");
 
+            var versionsOption = new Option<string>(
+                name: "--versions",
+                description: "Semicolon-separated list of compiler versions to process");
+
             var rootCommand = new RootCommand("H5 Compiler Version Matrix Tool")
             {
                 projectOption,
                 outputOption,
                 minVersionOption,
-                maxVersionOption
+                maxVersionOption,
+                versionsOption
             };
 
-            rootCommand.SetHandler(async (project, output, minVersion, maxVersion) =>
+            rootCommand.SetHandler(async (project, output, minVersion, maxVersion, versions) =>
             {
-                await RunAsync(project, output, minVersion, maxVersion);
-            }, projectOption, outputOption, minVersionOption, maxVersionOption);
+                await RunAsync(project, output, minVersion, maxVersion, versions);
+            }, projectOption, outputOption, minVersionOption, maxVersionOption, versionsOption);
 
             return await rootCommand.InvokeAsync(args);
         }
 
-        static async Task RunAsync(FileInfo project, DirectoryInfo output, string minVersion, string maxVersion)
+        static async Task RunAsync(FileInfo project, DirectoryInfo output, string minVersion, string maxVersion, string specificVersions)
         {
             if (!project.Exists)
             {
@@ -91,8 +97,21 @@ namespace H5.VersionMatrix
 
             using var repo = new LibGit2Sharp.Repository(flattenedDir.FullName);
 
-            Console.WriteLine("Fetching h5-compiler versions...");
-            var versions = await GetCompilerVersionsAsync(minVersion, maxVersion);
+            List<NuGetVersion> versions;
+
+            if (!string.IsNullOrWhiteSpace(specificVersions))
+            {
+                Console.WriteLine($"Using specified versions: {specificVersions}");
+                versions = specificVersions.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(v => NuGetVersion.Parse(v.Trim()))
+                    .OrderBy(v => v)
+                    .ToList();
+            }
+            else
+            {
+                Console.WriteLine("Fetching h5-compiler versions...");
+                versions = await GetCompilerVersionsAsync(minVersion, maxVersion);
+            }
 
             if (!versions.Any())
             {
@@ -132,7 +151,9 @@ namespace H5.VersionMatrix
                 var versionOutputDir = Path.Combine(output.FullName, versionStr); // Keep compiled output here
 
                 // 1. Install Tool
-                var h5Executable = Path.Combine(toolPath, "h5");
+                var executableName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "h5.exe" : "h5";
+                var h5Executable = Path.Combine(toolPath, executableName);
+
                 if (!File.Exists(h5Executable))
                 {
                     Console.WriteLine($"Installing h5-compiler {versionStr}...");
