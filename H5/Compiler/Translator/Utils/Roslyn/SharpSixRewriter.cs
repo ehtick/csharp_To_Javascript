@@ -569,6 +569,11 @@ namespace H5.Translator
 
         public override SyntaxNode VisitLiteralExpression(LiteralExpressionSyntax node)
         {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitLiteralExpression(node);
+            }
+
             if (node.Token.IsKind(SyntaxKind.SingleLineRawStringLiteralToken) ||
                 node.Token.IsKind(SyntaxKind.MultiLineRawStringLiteralToken))
             {
@@ -613,6 +618,11 @@ namespace H5.Translator
 
         public override SyntaxNode VisitTupleExpression(TupleExpressionSyntax node)
         {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitTupleExpression(node);
+            }
+
             if (node.Parent is AssignmentExpressionSyntax ae && ae.Left == node)
             {
                 return base.VisitTupleExpression(node);
@@ -847,6 +857,11 @@ namespace H5.Translator
 
         public override SyntaxNode VisitWithExpression(WithExpressionSyntax node)
         {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitWithExpression(node);
+            }
+
             // Rewrite 'record with { Prop = Val }' to:
             // 1. Clone the object (using H5.clone via H5.Script.Write)
             // 2. Execute initializer block on the clone using H5.Script.CallFor
@@ -935,6 +950,11 @@ namespace H5.Translator
 
         public override SyntaxNode VisitSwitchExpression(SwitchExpressionSyntax node)
         {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitSwitchExpression(node);
+            }
+
             // Rewrite Switch Expression to ternary chain
             // x switch { P1 => V1, ... } -> (x is P1) ? V1 : ...
 
@@ -2887,6 +2907,11 @@ namespace H5.Translator
 
         public override SyntaxNode VisitParenthesizedLambdaExpression(ParenthesizedLambdaExpressionSyntax node)
         {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitParenthesizedLambdaExpression(node);
+            }
+
             var oldMarkAsAsync = markAsAsync;
             markAsAsync = false;
             var ti = semanticModel.GetTypeInfo(node);
@@ -3006,6 +3031,11 @@ namespace H5.Translator
 
         public override SyntaxNode VisitSimpleLambdaExpression(SimpleLambdaExpressionSyntax node)
         {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitSimpleLambdaExpression(node);
+            }
+
             var oldMarkAsAsync = markAsAsync;
             markAsAsync = false;
 
