@@ -491,6 +491,23 @@ namespace H5.Translator
             throw new NotSupportedException(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Ref returns and locals are not supported", semanticModel.SyntaxTree.FilePath, node.ToString()));
         }
 
+        public override SyntaxNode VisitForEachStatement(ForEachStatementSyntax node)
+        {
+            if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                return base.VisitForEachStatement(node);
+            }
+
+            var info = semanticModel.GetForEachStatementInfo(node);
+            if (info.GetEnumeratorMethod != null && info.GetEnumeratorMethod.IsExtensionMethod)
+            {
+                var mapped = semanticModel.SyntaxTree.GetLineSpan(node.Span);
+                throw new NotSupportedException(string.Format(CultureInfo.InvariantCulture, "{2} - {3}({0},{1}): {4}", mapped.StartLinePosition.Line + 1, mapped.StartLinePosition.Character + 1, "Extension GetEnumerator is not supported", semanticModel.SyntaxTree.FilePath, node.ToString()));
+            }
+
+            return base.VisitForEachStatement(node);
+        }
+
         public override SyntaxNode VisitRefType(RefTypeSyntax node)
         {
             node = (RefTypeSyntax)base.VisitRefType(node);
@@ -2220,6 +2237,31 @@ namespace H5.Translator
         public override SyntaxNode VisitIdentifierName(IdentifierNameSyntax node)
         {
             if (node.SyntaxTree == null || node.SyntaxTree != semanticModel.SyntaxTree)
+            {
+                // Detached node
+                return base.VisitIdentifierName(node);
+            }
+
+            // Check if nint/nuint are used as identifiers (variables/members)
+            if (node.Identifier.ValueText == "nint" || node.Identifier.ValueText == "nuint")
+            {
+                var sym = semanticModel.GetSymbolInfo(node).Symbol;
+                if (sym == null || !(sym.Kind == SymbolKind.Local || sym.Kind == SymbolKind.Field || sym.Kind == SymbolKind.Parameter || sym.Kind == SymbolKind.Property || sym.Kind == SymbolKind.Method))
+                {
+                    if (node.Identifier.ValueText == "nint")
+                    {
+                        return SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.IntKeyword))
+                            .WithLeadingTrivia(node.GetLeadingTrivia())
+                            .WithTrailingTrivia(node.GetTrailingTrivia());
+                    }
+                    else if (node.Identifier.ValueText == "nuint")
+                    {
+                        return SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.UIntKeyword))
+                            .WithLeadingTrivia(node.GetLeadingTrivia())
+                            .WithTrailingTrivia(node.GetTrailingTrivia());
+                    }
+                }
+            }
             {
                 // Detached node
                 return base.VisitIdentifierName(node);
