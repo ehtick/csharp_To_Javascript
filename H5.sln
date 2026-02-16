@@ -44,6 +44,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".devops", ".devops", "{E9B8
 		.devops\build-h5-json.yml = .devops\build-h5-json.yml
 		.devops\build-h5-lib.yml = .devops\build-h5-lib.yml
 		.devops\build-h5-p2.yml = .devops\build-h5-p2.yml
+		.devops\build-h5-placeholders.yml = .devops\build-h5-placeholders.yml
 		.devops\build-h5-target.yml = .devops\build-h5-target.yml
 		.devops\build-h5-webgl2.yml = .devops\build-h5-webgl2.yml
 		.devops\build-template.yml = .devops\build-template.yml
