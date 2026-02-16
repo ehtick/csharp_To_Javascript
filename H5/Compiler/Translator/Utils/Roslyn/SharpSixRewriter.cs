@@ -795,18 +795,101 @@ namespace H5.Translator
 
             if (node.IsKind(SyntaxKind.CoalesceAssignmentExpression) && newNode is AssignmentExpressionSyntax assignment)
             {
+                var (stabilizedLeft, accessLeft) = StabilizeLValue(node.Left, assignment.Left);
+
                 return SyntaxFactory.AssignmentExpression(
                     SyntaxKind.SimpleAssignmentExpression,
-                    assignment.Left,
+                    stabilizedLeft,
                     SyntaxFactory.BinaryExpression(
                         SyntaxKind.CoalesceExpression,
-                        assignment.Left,
+                        accessLeft,
                         assignment.Right
                     )
                 ).NormalizeWhitespace().WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
             }
 
             return newNode;
+        }
+
+        private (ExpressionSyntax stabilized, ExpressionSyntax access) StabilizeLValue(ExpressionSyntax original, ExpressionSyntax rewritten)
+        {
+            if (original is IdentifierNameSyntax || !IsExpressionComplexEnoughToGetATemporaryVariable.IsComplex(semanticModel, original))
+            {
+                return (rewritten, rewritten);
+            }
+
+            if (original is MemberAccessExpressionSyntax maeOriginal && rewritten is MemberAccessExpressionSyntax maeRewritten)
+            {
+                var (stabilizedExpr, accessExpr) = StabilizeLValue(maeOriginal.Expression, maeRewritten.Expression);
+                return (maeRewritten.WithExpression(stabilizedExpr), maeRewritten.WithExpression(accessExpr));
+            }
+
+            if (original is ElementAccessExpressionSyntax eaeOriginal && rewritten is ElementAccessExpressionSyntax eaeRewritten)
+            {
+                var (stabilizedExpr, accessExpr) = StabilizeLValue(eaeOriginal.Expression, eaeRewritten.Expression);
+
+                if (eaeOriginal.ArgumentList.Arguments.Count == eaeRewritten.ArgumentList.Arguments.Count)
+                {
+                    var stabilizedArgs = new List<SyntaxNodeOrToken>();
+                    var accessArgs = new List<SyntaxNodeOrToken>();
+
+                    for (int i = 0; i < eaeOriginal.ArgumentList.Arguments.Count; i++)
+                    {
+                        var argOriginal = eaeOriginal.ArgumentList.Arguments[i];
+                        var argRewritten = eaeRewritten.ArgumentList.Arguments[i];
+
+                        var (sArg, aArg) = StabilizeRValue(argOriginal.Expression, argRewritten.Expression);
+
+                        if (i > 0)
+                        {
+                            stabilizedArgs.Add(SyntaxFactory.Token(SyntaxKind.CommaToken));
+                            accessArgs.Add(SyntaxFactory.Token(SyntaxKind.CommaToken));
+                        }
+
+                        stabilizedArgs.Add(argRewritten.WithExpression(sArg));
+                        accessArgs.Add(argRewritten.WithExpression(aArg));
+                    }
+
+                    return (eaeRewritten.WithExpression(stabilizedExpr).WithArgumentList(SyntaxFactory.BracketedArgumentList(SyntaxFactory.SeparatedList<ArgumentSyntax>(stabilizedArgs))),
+                            eaeRewritten.WithExpression(accessExpr).WithArgumentList(SyntaxFactory.BracketedArgumentList(SyntaxFactory.SeparatedList<ArgumentSyntax>(accessArgs))));
+                }
+            }
+
+            return StabilizeRValue(original, rewritten);
+        }
+
+        private (ExpressionSyntax stabilized, ExpressionSyntax access) StabilizeRValue(ExpressionSyntax original, ExpressionSyntax rewritten)
+        {
+            if (!IsExpressionComplexEnoughToGetATemporaryVariable.IsComplex(semanticModel, original))
+            {
+                return (rewritten, rewritten);
+            }
+
+            var tempKey = GetUniqueTempKey("coal");
+            var typeInfo = semanticModel.GetTypeInfo(original);
+            var type = typeInfo.Type ?? typeInfo.ConvertedType;
+            var typeName = type?.ToMinimalDisplayString(semanticModel, original.SpanStart) ?? "object";
+
+            // H5.Script.ToTemp(key, value)
+            var toTempArgs = new List<SyntaxNodeOrToken>();
+            toTempArgs.Add(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(tempKey))));
+            toTempArgs.Add(SyntaxFactory.Token(SyntaxKind.CommaToken));
+            toTempArgs.Add(SyntaxFactory.Argument(rewritten));
+
+            var toTemp = SyntaxFactory.InvocationExpression(
+                SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ParseName("global::H5.Script"), SyntaxFactory.IdentifierName("ToTemp")),
+                SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList<ArgumentSyntax>(toTempArgs))
+            );
+
+            // H5.Script.FromTemp<T>(key)
+            var fromTemp = SyntaxFactory.InvocationExpression(
+                SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, SyntaxFactory.ParseName("global::H5.Script"),
+                    SyntaxFactory.GenericName("FromTemp").WithTypeArgumentList(SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.ParseTypeName(typeName))))
+                ),
+                SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(tempKey)))))
+            );
+
+            return (toTemp, fromTemp);
         }
 
         public override SyntaxNode VisitCompilationUnit(CompilationUnitSyntax node)
