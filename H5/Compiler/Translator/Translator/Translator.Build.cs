@@ -164,6 +164,11 @@ namespace H5.Translator
                         throw new TranslatorException("AsyncMethodBuilder attribute is not supported");
                     }
 
+                    if (syntaxTree.GetRoot().DescendantNodes().OfType<PointerTypeSyntax>().Any())
+                    {
+                        throw new TranslatorException("Pointers are not supported");
+                    }
+
                     var rewriter = new StackAllocRewriter();
                     var newRoot = rewriter.Visit(syntaxTree.GetRoot());
                     if (newRoot != syntaxTree.GetRoot())
@@ -412,6 +417,11 @@ namespace H5.Translator
                     if (d.Id == "CS0518" && d.GetMessage().Contains("System.Runtime.InteropServices.UnmanagedType"))
                     {
                         throw new TranslatorException("Unmanaged constraint is not supported");
+                    }
+
+                    if (d.Id == "CS0227")
+                    {
+                        throw new TranslatorException("Unsafe code is not supported");
                     }
 
                     var filePath = d.Location?.SourceTree?.FilePath ?? "";
