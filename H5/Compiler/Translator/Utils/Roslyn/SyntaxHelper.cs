@@ -1,4 +1,4 @@
-﻿using H5.Contract;
+using H5.Contract;
 using H5.Contract.Constants;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -472,7 +472,14 @@ namespace H5.Translator
                 return SyntaxFactory.QualifiedName((NameSyntax)parent, SyntaxFactory.IdentifierName(name));
             }
 
-            return SyntaxFactory.ParseTypeName(type.GetFullyQualifiedNameAndValidate(model, pos));
+            var result = SyntaxFactory.ParseTypeName(type.GetFullyQualifiedNameAndValidate(model, pos));
+
+            if (result is AliasQualifiedNameSyntax aq && aq.Alias.IsMissing)
+            {
+                return aq.WithAlias(SyntaxFactory.IdentifierName(SyntaxFactory.Token(SyntaxKind.GlobalKeyword)));
+            }
+
+            return result;
         }
 
         /// <summary>
