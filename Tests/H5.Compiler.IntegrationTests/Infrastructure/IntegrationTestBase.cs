@@ -75,7 +75,7 @@ namespace H5.Compiler.IntegrationTests
             if (!skipRoslyn)
             {
                 roslynOutput = NormalizeOutput(roslynOutput);
-                Assert.AreEqual(roslynOutput, playwrightOutput, $"Output mismatch.\nExpected (Roslyn):\n{roslynOutput}\nActual (H5/Playwright):\n{playwrightOutput}");
+                Assert.AreEqual(roslynOutput, playwrightOutput, $"Output mismatch.\n\nExpected (Roslyn):\n--------------\n{roslynOutput}\n--------------\n\n\nActual (H5/Playwright):\n--------------\n{playwrightOutput}\n--------------");
             }
 
             return playwrightOutput;

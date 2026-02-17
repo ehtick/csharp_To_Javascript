@@ -403,7 +403,7 @@
             var view = View(8).ToDynamic();
             view.setFloat64(0, value);
 
-            return H5.Script.Write<long>("new H5.$Long([view.getInt32(4), view.getInt32(0)])");
+            return H5.Script.Write<dynamic>("new System.Int64([view.getInt32(4), view.getInt32(0)])");
         }
 
         /// <summary>
