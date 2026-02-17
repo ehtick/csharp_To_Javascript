@@ -226,10 +226,32 @@ namespace H5.Fuzzer.Generator
 
             var sections = new List<SwitchSectionSyntax>();
             int cases = _random.Next(2, 5);
+            var usedLabels = new HashSet<object>();
 
             for (int i = 0; i < cases; i++)
             {
-                var label = CaseSwitchLabel(_expressions.GenerateConstant(switchType));
+                ExpressionSyntax constantExpr;
+                object value = null;
+                int attempts = 0;
+
+                do
+                {
+                    constantExpr = _expressions.GenerateConstant(switchType);
+                    if (constantExpr is LiteralExpressionSyntax lit)
+                    {
+                        value = lit.Token.Value;
+                    }
+                    else
+                    {
+                        value = constantExpr.ToString();
+                    }
+                    attempts++;
+                } while (usedLabels.Contains(value) && attempts < 10);
+
+                if (usedLabels.Contains(value)) continue;
+                usedLabels.Add(value);
+
+                var label = CaseSwitchLabel(constantExpr);
                 var statements = GenerateStatements(_random.Next(1, 3), depth, returnType, scope, isAsync);
                 statements.Add(BreakStatement());
 
