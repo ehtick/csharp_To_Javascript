@@ -34,6 +34,31 @@ namespace System
         [H5.Template("System.Enum.tryParse({TEnum}, {value}, {result}, {ignoreCase})")]
         public static extern bool TryParse<TEnum>(string value, bool ignoreCase, out TEnum result) where TEnum : struct;
 
+        public static TEnum Parse<TEnum>(string value) where TEnum : struct
+        {
+            return (TEnum)Parse(typeof(TEnum), value);
+        }
+
+        public static TEnum Parse<TEnum>(string value, bool ignoreCase) where TEnum : struct
+        {
+            return (TEnum)Parse(typeof(TEnum), value, ignoreCase);
+        }
+
+        public static TEnum[] GetValues<TEnum>() where TEnum : struct
+        {
+            return (TEnum[])GetValues(typeof(TEnum));
+        }
+
+        public static string[] GetNames<TEnum>() where TEnum : struct
+        {
+            return GetNames(typeof(TEnum));
+        }
+
+        public static bool IsDefined<TEnum>(TEnum value) where TEnum : struct
+        {
+            return IsDefined(typeof(TEnum), value);
+        }
+
         [H5.Template("System.Enum.toString({this:type}, {this})", Fn = "System.Enum.toStringFn({this:type})")]
         public override extern string ToString();
 
