@@ -1,8 +1,7 @@
 namespace System
 {
     [H5.Convention(Member = H5.ConventionMember.Field | H5.ConventionMember.Method, Notation = H5.Notation.CamelCase)]
-    [H5.External]
-    [H5.Name("Math")]
+    [H5.Reflectable]
     public static class MathF
     {
         [H5.Convention]
@@ -11,23 +10,34 @@ namespace System
         [H5.Convention]
         public const float PI = 3.14159265f;
 
+        [H5.Template("Math.abs({x})")]
         public static extern float Abs(float x);
+
+        [H5.Template("Math.acos({x})")]
         public static extern float Acos(float x);
+
+        [H5.Template("Math.asin({x})")]
         public static extern float Asin(float x);
+
+        [H5.Template("Math.atan({x})")]
         public static extern float Atan(float x);
+
+        [H5.Template("Math.atan2({y}, {x})")]
         public static extern float Atan2(float y, float x);
 
-        [H5.Name("ceil")]
+        [H5.Template("Math.ceil({x})")]
         public static extern float Ceiling(float x);
 
+        [H5.Template("Math.cos({x})")]
         public static extern float Cos(float x);
 
         [H5.Template("H5.Math.cosh({value})")]
         public static extern float Cosh(float value);
 
+        [H5.Template("Math.exp({x})")]
         public static extern float Exp(float x);
 
-        [H5.Name("floor")]
+        [H5.Template("Math.floor({x})")]
         public static extern float Floor(float x);
 
         [H5.Template("H5.Math.IEEERemainder({x}, {y})")]
