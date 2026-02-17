@@ -2294,52 +2294,97 @@ namespace System {
 
         internal static DateTime Parse(string s, DateTimeFormatInfo dtfi, DateTimeStyles styles, out TimeSpan offset)
         {
-            throw NotImplemented.ByDesign;
-
-            // TODO: NotSupported
-            //DateTimeResult result = new DateTimeResult();       // The buffer to store the parsing result.
-            //result.Init();
-            //result.flags |= ParseFlags.CaptureOffset;
-            //if (TryParse(s, dtfi, styles, ref result))
-            //{
-            //    offset = result.timeZoneOffset;
-            //    return result.parsedDate;
-            //}
-            //else
-            //{
-            //    throw GetDateTimeParseException(ref result);
-            //}
+            if (TryParse(s, dtfi, styles, out DateTime result, out offset))
+            {
+                return result;
+            }
+            throw new FormatException("String was not recognized as a valid DateTime.");
         }
 
 
         internal static bool TryParse(string s, DateTimeFormatInfo dtfi, DateTimeStyles styles, out DateTime result) {
             return DateTime.TryParse(s, out result);
-
-            // TODO: NotSupported
-            //result = DateTime.MinValue;
-            //DateTimeResult resultData = new DateTimeResult();       // The buffer to store the parsing result.
-            //resultData.Init();
-            //if (TryParse(s, dtfi, styles, ref resultData)) {
-            //    result = resultData.parsedDate;
-            //    return true;
-            //}
-            //return false;
         }
 
         internal static bool TryParse(string s, DateTimeFormatInfo dtfi, DateTimeStyles styles, out DateTime result, out TimeSpan offset) {
-            throw NotImplemented.ByDesign;
-            // TODO: NotSupported
-            //result = DateTime.MinValue;
-            //offset = TimeSpan.Zero;
-            //DateTimeResult parseResult = new DateTimeResult();       // The buffer to store the parsing result.
-            //parseResult.Init();
-            //parseResult.flags |= ParseFlags.CaptureOffset;
-            //if (TryParse(s, dtfi, styles, ref parseResult)) {
-            //    result = parseResult.parsedDate;
-            //    offset = parseResult.timeZoneOffset;
-            //    return true;
-            //}
-            //return false;
+            result = DateTime.MinValue;
+            offset = TimeSpan.Zero;
+
+            if (string.IsNullOrEmpty(s))
+            {
+                return false;
+            }
+
+            // 1. Check for Z (UTC)
+            if (s.EndsWith("Z") || s.EndsWith("z"))
+            {
+                offset = TimeSpan.Zero;
+                return DateTime.TryParse(s.Substring(0, s.Length - 1), out result);
+            }
+
+            // 2. Check for +/- offset
+            int lastPlus = s.LastIndexOf('+');
+            int lastMinus = s.LastIndexOf('-');
+            int signIndex = Math.Max(lastPlus, lastMinus);
+
+            if (signIndex > 0 && signIndex < s.Length - 1)
+            {
+                // Verify it's likely a timezone and not a date separator or negative year
+                // ISO 8601 time separator is 'T'. Offset comes after.
+
+                string offsetStr = s.Substring(signIndex);
+                if (TryParseOffset(offsetStr, out offset))
+                {
+                    return DateTime.TryParse(s.Substring(0, signIndex), out result);
+                }
+            }
+
+            // 3. Fallback: Parse as DateTime, assume Local offset
+            if (DateTime.TryParse(s, out result))
+            {
+                // H5 specific: Calculate local offset using DateTime.Now (Local) vs UtcNow (UTC)
+                // This assumes the parsed date is treated as Local.
+                offset = DateTime.Now - DateTime.UtcNow;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryParseOffset(string s, out TimeSpan offset)
+        {
+            offset = TimeSpan.Zero;
+            if (string.IsNullOrEmpty(s) || s.Length < 3) return false;
+            char sign = s[0];
+            if (sign != '+' && sign != '-') return false;
+
+            int hours = 0;
+            int minutes = 0;
+
+            if (s.Contains(":"))
+            {
+                // +HH:mm
+                if (s.Length != 6) return false;
+                if (!int.TryParse(s.Substring(1, 2), out hours)) return false;
+                if (!int.TryParse(s.Substring(4, 2), out minutes)) return false;
+            }
+            else
+            {
+                if (s.Length == 3) // +HH
+                {
+                     if (!int.TryParse(s.Substring(1, 2), out hours)) return false;
+                }
+                else if (s.Length == 5) // +HHmm
+                {
+                     if (!int.TryParse(s.Substring(1, 2), out hours)) return false;
+                     if (!int.TryParse(s.Substring(3, 2), out minutes)) return false;
+                }
+                else return false;
+            }
+
+            offset = new TimeSpan(hours, minutes, 0);
+            if (sign == '-') offset = offset.Negate();
+            return true;
         }
 
 
