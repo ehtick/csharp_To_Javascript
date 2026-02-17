@@ -91,16 +91,20 @@ public class Program
         // So output depends on browser timezone potentially?
         // Let's stick to properties and explicit formatting if supported, or just testing validity.
 
-        // Parse - Not implemented in H5 yet
-        // var parsed = DateTimeOffset.Parse("2023-10-05T12:30:00Z", CultureInfo.InvariantCulture);
-        // Console.WriteLine(parsed.UtcDateTime.Hour); // 12
-        // Console.WriteLine(parsed.Offset == TimeSpan.Zero);
+        // Parse
+        try {
+            var parsed = DateTimeOffset.Parse("2023-10-05T12:30:00Z", CultureInfo.InvariantCulture);
+            Console.WriteLine(parsed.UtcDateTime.Hour); // 12
+            Console.WriteLine(parsed.Offset == TimeSpan.Zero);
+        } catch (Exception ex) {
+            Console.WriteLine("Parse failed: " + ex.Message);
+        }
 
-        // DateTimeOffset res;
-        // if (DateTimeOffset.TryParse("2023-10-05T14:30:00+02:00", out res)) {
-        //      Console.WriteLine(res.Hour); // 14
-        //      Console.WriteLine(res.Offset.TotalHours); // 2
-        // }
+        DateTimeOffset res;
+        if (DateTimeOffset.TryParse("2023-10-05T14:30:00+02:00", out res)) {
+             Console.WriteLine(res.Hour); // 14
+             Console.WriteLine(res.Offset.TotalHours); // 2
+        }
     }
 }
 """;

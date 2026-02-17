@@ -575,15 +575,14 @@ namespace System {
         }
 
         public static DateTimeOffset Parse(string input, IFormatProvider formatProvider, DateTimeStyles styles) {
-            throw NotImplemented.ByDesign;
             // TODO: NotSupported [DateTimeFormatInfo]
             //styles = ValidateStyles(styles, "styles");
-            //TimeSpan offset;
-            //DateTime dateResult = DateTimeParse.Parse(input,
-            //                                          DateTimeFormatInfo.GetInstance(formatProvider),
-            //                                          styles,
-            //                                          out offset);
-            //return new DateTimeOffset(dateResult.Ticks, offset);
+            TimeSpan offset;
+            DateTime dateResult = DateTimeParse.Parse(input,
+                                                      DateTimeFormatInfo.CurrentInfo, // DateTimeFormatInfo.GetInstance(formatProvider) is not available?
+                                                      styles,
+                                                      out offset);
+            return new DateTimeOffset(dateResult.Ticks, offset);
         }
 
         // Constructs a DateTimeOffset from a string. The string must specify a
@@ -722,19 +721,18 @@ namespace System {
             return parsed;
         }
 
-        // TODO: NotSupported [DateTimeFormatInfo]
-        //public static Boolean TryParse(String input, IFormatProvider formatProvider, DateTimeStyles styles, out DateTimeOffset result) {
-        //    styles = ValidateStyles(styles, "styles");
-        //    TimeSpan offset;
-        //    DateTime dateResult;
-        //    Boolean parsed = DateTimeParse.TryParse(input,
-        //                                            DateTimeFormatInfo.GetInstance(formatProvider),
-        //                                            styles,
-        //                                            out dateResult,
-        //                                            out offset);
-        //    result = new DateTimeOffset(dateResult.Ticks, offset);
-        //    return parsed;
-        //}
+        public static bool TryParse(string input, IFormatProvider formatProvider, DateTimeStyles styles, out DateTimeOffset result) {
+            // styles = ValidateStyles(styles, "styles");
+            TimeSpan offset;
+            DateTime dateResult;
+            bool parsed = DateTimeParse.TryParse(input,
+                                                    DateTimeFormatInfo.CurrentInfo,
+                                                    styles,
+                                                    out dateResult,
+                                                    out offset);
+            result = new DateTimeOffset(dateResult.Ticks, offset);
+            return parsed;
+        }
 
         // TODO: NotSupported [DateTimeFormatInfo]
         //public static Boolean TryParseExact(String input, String format, IFormatProvider formatProvider, DateTimeStyles styles,
