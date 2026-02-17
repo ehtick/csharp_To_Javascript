@@ -1033,6 +1033,69 @@ namespace H5.Translator
             return (toTemp, fromTemp);
         }
 
+        private SyntaxList<UsingDirectiveSyntax> VisitUsings(SyntaxList<UsingDirectiveSyntax> usings, ref SyntaxTriviaList? pendingTrivia)
+        {
+            var newUsings = new List<UsingDirectiveSyntax>();
+            foreach (var u in usings)
+            {
+                var visited = (UsingDirectiveSyntax)Visit(u);
+                if (visited == null)
+                {
+                    var leading = u.GetLeadingTrivia();
+                    var trailing = u.GetTrailingTrivia();
+
+                    if (pendingTrivia == null)
+                    {
+                        pendingTrivia = leading;
+                    }
+                    else
+                    {
+                        pendingTrivia = pendingTrivia.Value.AddRange(leading);
+                    }
+
+                    pendingTrivia = pendingTrivia.Value.AddRange(trailing);
+                }
+                else
+                {
+                    if (pendingTrivia != null)
+                    {
+                        visited = visited.WithLeadingTrivia(pendingTrivia.Value.AddRange(visited.GetLeadingTrivia()));
+                        pendingTrivia = null;
+                    }
+                    newUsings.Add(visited);
+                }
+            }
+            return SyntaxFactory.List(newUsings);
+        }
+
+        public override SyntaxNode VisitNamespaceDeclaration(NamespaceDeclarationSyntax node)
+        {
+            var externs = VisitList(node.Externs);
+
+            SyntaxTriviaList? pendingTrivia = null;
+            var usings = VisitUsings(node.Usings, ref pendingTrivia);
+
+            var members = VisitList(node.Members);
+            if (pendingTrivia != null && members.Count > 0)
+            {
+                var first = members[0];
+                members = members.Replace(first, first.WithLeadingTrivia(pendingTrivia.Value.AddRange(first.GetLeadingTrivia())));
+                pendingTrivia = null;
+            }
+
+            var result = node
+                .WithExterns(externs)
+                .WithUsings(usings)
+                .WithMembers(members);
+
+            if (pendingTrivia != null)
+            {
+                result = result.WithCloseBraceToken(result.CloseBraceToken.WithLeadingTrivia(pendingTrivia.Value.AddRange(result.CloseBraceToken.LeadingTrivia)));
+            }
+
+            return result;
+        }
+
         public override SyntaxNode VisitCompilationUnit(CompilationUnitSyntax node)
         {
             // Handle Top-Level Statements
@@ -1056,29 +1119,80 @@ namespace H5.Translator
                  node = node.WithMembers(SyntaxFactory.List(otherMembers));
             }
 
-            return base.VisitCompilationUnit(node);
+            var externs = VisitList(node.Externs);
+
+            SyntaxTriviaList? pendingTrivia = null;
+            var usings = VisitUsings(node.Usings, ref pendingTrivia);
+
+            var attributeLists = VisitList(node.AttributeLists);
+            if (pendingTrivia != null && attributeLists.Count > 0)
+            {
+                var first = attributeLists[0];
+                attributeLists = attributeLists.Replace(first, first.WithLeadingTrivia(pendingTrivia.Value.AddRange(first.GetLeadingTrivia())));
+                pendingTrivia = null;
+            }
+
+            var members = VisitList(node.Members);
+            if (pendingTrivia != null && members.Count > 0)
+            {
+                var first = members[0];
+                members = members.Replace(first, first.WithLeadingTrivia(pendingTrivia.Value.AddRange(first.GetLeadingTrivia())));
+                pendingTrivia = null;
+            }
+
+            var result = node
+                .WithExterns(externs)
+                .WithUsings(usings)
+                .WithAttributeLists(attributeLists)
+                .WithMembers(members);
+
+            if (pendingTrivia != null)
+            {
+                result = result.WithEndOfFileToken(result.EndOfFileToken.WithLeadingTrivia(pendingTrivia.Value.AddRange(result.EndOfFileToken.LeadingTrivia)));
+            }
+
+            return result;
         }
 
         public override SyntaxNode VisitFileScopedNamespaceDeclaration(FileScopedNamespaceDeclarationSyntax node)
         {
+            var externs = VisitList(node.Externs);
+
+            SyntaxTriviaList? pendingTrivia = null;
+            var usings = VisitUsings(node.Usings, ref pendingTrivia);
+
             var members = new List<MemberDeclarationSyntax>();
+            bool firstMember = true;
             foreach (var member in node.Members)
             {
                 var visited = Visit(member) as MemberDeclarationSyntax;
                 if (visited != null)
                 {
+                    if (firstMember && pendingTrivia != null)
+                    {
+                        visited = visited.WithLeadingTrivia(pendingTrivia.Value.AddRange(visited.GetLeadingTrivia()));
+                        pendingTrivia = null;
+                    }
                     members.Add(visited);
+                    firstMember = false;
                 }
             }
 
-            return SyntaxFactory.NamespaceDeclaration(
+            var nsDecl = SyntaxFactory.NamespaceDeclaration(
                 node.Name,
-                node.Externs,
-                node.Usings,
+                externs,
+                usings,
                 SyntaxFactory.List(members)
             )
             .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Space))
             .WithLeadingTrivia(node.GetLeadingTrivia());
+
+            if (pendingTrivia != null)
+            {
+                nsDecl = nsDecl.WithCloseBraceToken(nsDecl.CloseBraceToken.WithLeadingTrivia(pendingTrivia.Value.AddRange(nsDecl.CloseBraceToken.LeadingTrivia)));
+            }
+
+            return nsDecl;
         }
 
         public override SyntaxNode VisitWithExpression(WithExpressionSyntax node)
