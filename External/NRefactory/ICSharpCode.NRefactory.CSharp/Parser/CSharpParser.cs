@@ -30,12 +30,16 @@ using System.IO;
 using ICSharpCode.NRefactory.Editor;
 using ICSharpCode.NRefactory.MonoCSharp;
 using ICSharpCode.NRefactory.TypeSystem;
+using Microsoft.Extensions.Logging;
+using Mosaik.Core;
 
 
 namespace ICSharpCode.NRefactory.CSharp
 {
     public class CSharpParser
     {
+        private static ILogger Logger = ApplicationLogging.CreateLogger<CSharpParser>();
+
         CompilerSettings compilerSettings;
 
         class ConversionVisitor : StructuralVisitor
@@ -545,8 +549,7 @@ namespace ICSharpCode.NRefactory.CSharp
 
             public override void Visit(MemberCore member)
             {
-                Console.WriteLine("Unknown member:");
-                Console.WriteLine(member.GetType() + "-> Member {0}", member.GetSignatureForError());
+                Logger.LogError("Unknown member: {0} -> {1}", member.GetType(), member.GetSignatureForError());
             }
 
             readonly Stack<TypeDeclaration> typeStack = new Stack<TypeDeclaration>();
@@ -763,7 +766,7 @@ namespace ICSharpCode.NRefactory.CSharp
                 foreach (var m in e.Members) {
                     if (!(m is EnumMember member))
                     {
-                        Console.WriteLine("WARNING - ENUM MEMBER: " + m);
+                        Logger.LogWarning("Invalid Enum member: {0}", m);
                         continue;
                     }
                     Visit(member);
@@ -3873,13 +3876,6 @@ namespace ICSharpCode.NRefactory.CSharp
 
         ErrorReportPrinter errorReportPrinter = new ErrorReportPrinter(null);
 
-        [Obsolete("Use the Errors/Warnings/ErrorsAndWarnings properties instead")]
-        public ErrorReportPrinter ErrorPrinter {
-            get {
-                return errorReportPrinter;
-            }
-        }
-
         public bool HasErrors {
             get {
                 return errorReportPrinter.ErrorsCount > 0;
@@ -4034,19 +4030,21 @@ namespace ICSharpCode.NRefactory.CSharp
 
         SyntaxTree Parse(ITextSource program, string fileName, int initialLine, int initialColumn)
         {
-            lock (parseLock) {
+            lock (parseLock) 
+            {
                 errorReportPrinter = new ErrorReportPrinter("");
                 var ctx = new CompilerContext(compilerSettings.ToMono(), errorReportPrinter);
                 ctx.Settings.TabSize = 1;
                 var reader = new SeekableStreamReader(program);
                 var file = new SourceFile(fileName, fileName, 0);
-                Location.Initialize(new List<SourceFile>(new [] { file }));
+                Location.Initialize(new List<SourceFile>(new[] { file }));
                 var module = new ModuleContainer(ctx);
                 var session = new ParserSession();
                 session.LocationsBag = new LocationsBag();
                 var report = new Report(ctx, errorReportPrinter);
                 var parser = Driver.Parse(reader, file, module, session, report, initialLine - 1, initialColumn - 1);
-                var top = new CompilerCompilationUnit {
+                var top = new CompilerCompilationUnit
+                {
                     ModuleCompiled = module,
                     LocationsBag = session.LocationsBag,
                     SpecialsBag = parser.Lexer.sbag,
@@ -4054,6 +4052,12 @@ namespace ICSharpCode.NRefactory.CSharp
                 };
                 var unit = Parse(top, fileName);
                 unit.Errors.AddRange(errorReportPrinter.Errors);
+
+                if (errorReportPrinter.Errors.Count > 0)
+                {
+                    Logger.LogError("Invalid C# code found for {0}, probably due to rewrite errors:\n{1}", fileName, program.Text);
+                }
+
                 CompilerCallableEntryPoint.Reset();
                 unit.TextSource = program.Text;
                 return unit;
