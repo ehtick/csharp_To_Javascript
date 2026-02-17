@@ -565,6 +565,84 @@ namespace System
 
         #endregion FromBase64CharArray
 
+        #region ToHexString
+
+        public static string ToHexString(byte[] inArray)
+        {
+            if (inArray == null)
+            {
+                throw new ArgumentNullException(nameof(inArray));
+            }
+
+            return ToHexString(inArray, 0, inArray.Length);
+        }
+
+        public static string ToHexString(byte[] inArray, int offset, int length)
+        {
+            if (inArray == null)
+            {
+                throw new ArgumentNullException(nameof(inArray));
+            }
+
+            if (offset < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(offset));
+            }
+
+            if (length < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(length));
+            }
+
+            if (offset > inArray.Length - length)
+            {
+                throw new ArgumentException("Offset and length were out of bounds for the array or count is greater than the number of elements from index to the end of the source collection.");
+            }
+
+            if (length == 0)
+            {
+                return string.Empty;
+            }
+
+            // BitConverter.ToString returns hyphenated hex. Remove hyphens.
+            return BitConverter.ToString(inArray, offset, length).Replace("-", "");
+        }
+
+        #endregion ToHexString
+
+        #region FromHexString
+
+        public static byte[] FromHexString(string s)
+        {
+            if (s == null)
+            {
+                throw new ArgumentNullException(nameof(s));
+            }
+
+            if (s.Length % 2 != 0)
+            {
+                throw new FormatException("The input string must have an even number of hex characters.");
+            }
+
+            byte[] bytes = new byte[s.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                string hex = s.Substring(i * 2, 2);
+                try
+                {
+                    bytes[i] = Byte.Parse(hex, System.Globalization.NumberStyles.HexNumber);
+                }
+                catch (FormatException)
+                {
+                    throw new FormatException("The string contains invalid hex characters.");
+                }
+            }
+
+            return bytes;
+        }
+
+        #endregion FromHexString
+
         public static extern object ChangeType(object value, Type conversionType);
         public static extern object ChangeType(object value, Type conversionType, IFormatProvider provider);
         public static extern object ChangeType(object value, TypeCode typeCode);

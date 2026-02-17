@@ -224,5 +224,72 @@ namespace System
                 buffer[i] = (byte)(InternalSample() % (byte.MaxValue + 1));
             }
         }
+
+        public virtual long NextInt64()
+        {
+            return NextInt64(long.MaxValue);
+        }
+
+        public virtual long NextInt64(long maxValue)
+        {
+            if (maxValue < 0)
+            {
+                throw new ArgumentOutOfRangeException("maxValue", "maxValue must be greater than or equal to 0");
+            }
+
+            return NextInt64(0, maxValue);
+        }
+
+        public virtual long NextInt64(long minValue, long maxValue)
+        {
+            if (minValue > maxValue)
+            {
+                throw new ArgumentOutOfRangeException("minValue", "minValue must be less than or equal to maxValue");
+            }
+
+            ulong range = (ulong)(maxValue - minValue);
+
+            if (range == 0)
+            {
+                return minValue;
+            }
+
+            if (range <= (ulong)int.MaxValue)
+            {
+                return (long)Next((int)range) + minValue;
+            }
+
+            byte[] buffer = new byte[8];
+            ulong result;
+            ulong limit = ulong.MaxValue - (ulong.MaxValue % range);
+
+            do
+            {
+                NextBytes(buffer);
+                result = BitConverter.ToUInt64(buffer, 0);
+            } while (result >= limit);
+
+            return (long)(result % range) + minValue;
+        }
+
+        public virtual float NextSingle()
+        {
+            return (float)Sample();
+        }
+
+        private static Random t_shared;
+
+        public static Random Shared
+        {
+            get
+            {
+                if (t_shared == null)
+                {
+                    t_shared = new Random();
+                }
+
+                return t_shared;
+            }
+        }
     }
 }
