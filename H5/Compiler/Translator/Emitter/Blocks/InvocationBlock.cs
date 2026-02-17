@@ -39,7 +39,11 @@ namespace H5.Translator
 
         protected void WriteThisExtension(Expression target)
         {
-            if (target.HasChildren)
+            if (target is MemberReferenceExpression memberRef)
+            {
+                memberRef.Target.AcceptVisitor(Emitter);
+            }
+            else if (target.HasChildren)
             {
                 var first = target.Children.ElementAt(0);
 
