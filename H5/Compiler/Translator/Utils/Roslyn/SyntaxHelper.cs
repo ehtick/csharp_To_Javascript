@@ -474,12 +474,26 @@ namespace H5.Translator
 
             var result = SyntaxFactory.ParseTypeName(type.GetFullyQualifiedNameAndValidate(model, pos));
 
-            if (result is AliasQualifiedNameSyntax aq && aq.Alias.IsMissing)
+            return FixAliasQualifiedName(result);
+        }
+
+        private static TypeSyntax FixAliasQualifiedName(TypeSyntax node)
+        {
+            if (node is AliasQualifiedNameSyntax aq && aq.Alias.IsMissing)
             {
                 return aq.WithAlias(SyntaxFactory.IdentifierName(SyntaxFactory.Token(SyntaxKind.GlobalKeyword)));
             }
 
-            return result;
+            if (node is QualifiedNameSyntax qn)
+            {
+                var newLeft = FixAliasQualifiedName(qn.Left);
+                if (newLeft != qn.Left && newLeft is NameSyntax nameLeft)
+                {
+                    return qn.WithLeft(nameLeft);
+                }
+            }
+
+            return node;
         }
 
         /// <summary>
