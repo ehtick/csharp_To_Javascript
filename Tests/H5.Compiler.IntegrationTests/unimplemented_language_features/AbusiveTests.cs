@@ -11,7 +11,7 @@ namespace H5.Compiler.IntegrationTests.UnimplementedLanguageFeatures
         {
             var code = """
     using System;
-    #if H5
+    #if TRUE
     using MYTYPE = System.DateTime;
     #else
     using MYTYPE = System.DateTimeOffset;
