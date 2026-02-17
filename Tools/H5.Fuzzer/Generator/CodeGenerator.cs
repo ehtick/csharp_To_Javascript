@@ -60,12 +60,12 @@ namespace H5.Fuzzer.Generator
             
             // Generate random statements calling other methods or doing logic
             var bodyGenerator = new StatementGenerator(_random, _types, availableMethods);
-            statements.AddRange(bodyGenerator.GenerateStatements(10, 0)); // 10 statements max, depth 0
+            statements.AddRange(bodyGenerator.GenerateStatements(10, 0, returnType: null, parentScope: null, isAsync: true));
 
             statements.Add(ParseStatement("Console.WriteLine(\"Program End\");"));
 
-            return MethodDeclaration(PredefinedType(Token(SyntaxKind.VoidKeyword)), "Main")
-                .WithModifiers(TokenList(Token(SyntaxKind.PublicKeyword), Token(SyntaxKind.StaticKeyword)))
+            return MethodDeclaration(IdentifierName("Task"), "Main")
+                .WithModifiers(TokenList(Token(SyntaxKind.PublicKeyword), Token(SyntaxKind.StaticKeyword), Token(SyntaxKind.AsyncKeyword)))
                 .WithBody(Block(statements));
         }
     }
