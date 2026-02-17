@@ -2353,15 +2353,23 @@ namespace H5.Translator
 
                             if (method.IsGenericMethod && method.TypeArguments.Length == 1 && method.Parameters.Length > 0 && SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, method.TypeArguments[0]))
                             {
-                                var targetExpression = (originalNode.Expression as MemberAccessExpressionSyntax)?.Expression;
-                                if (targetExpression != null)
+                                try
                                 {
-                                    var targetType = semanticModel.GetTypeInfo(targetExpression).Type;
-                                    if (targetType != null && targetType.Kind != SymbolKind.ErrorType && !SymbolEqualityComparer.Default.Equals(targetType, method.TypeArguments[0]))
+                                    var targetExpression = (node.Expression as MemberAccessExpressionSyntax)?.Expression;
+                                    if (targetExpression != null)
                                     {
-                                        genericName = SyntaxHelper.GenerateGenericName(name.Identifier, new[] { targetType }, semanticModel, pos, this);
-                                        genericName = genericName.WithLeadingTrivia(name.GetLeadingTrivia().ExcludeDirectivies()).WithTrailingTrivia(name.GetTrailingTrivia().ExcludeDirectivies());
+                                        var sm = semanticModel.SyntaxTree == targetExpression.SyntaxTree ? semanticModel : semanticModel.Compilation.GetSemanticModel(targetExpression.SyntaxTree);
+                                        var targetType = sm.GetTypeInfo(targetExpression).Type;
+                                        if (targetType != null && targetType.Kind != SymbolKind.ErrorType && !SymbolEqualityComparer.Default.Equals(targetType, method.TypeArguments[0]))
+                                        {
+                                            genericName = SyntaxHelper.GenerateGenericName(name.Identifier, new[] { targetType }, semanticModel, pos, this);
+                                            genericName = genericName.WithLeadingTrivia(name.GetLeadingTrivia().ExcludeDirectivies()).WithTrailingTrivia(name.GetTrailingTrivia().ExcludeDirectivies());
+                                        }
                                     }
+                                }
+                                catch(Exception E)
+                                {
+                                    return base.Visit(node);
                                 }
                             }
 
