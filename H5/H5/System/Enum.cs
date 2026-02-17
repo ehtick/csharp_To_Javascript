@@ -34,30 +34,21 @@ namespace System
         [H5.Template("System.Enum.tryParse({TEnum}, {value}, {result}, {ignoreCase})")]
         public static extern bool TryParse<TEnum>(string value, bool ignoreCase, out TEnum result) where TEnum : struct;
 
-        public static TEnum Parse<TEnum>(string value) where TEnum : struct
-        {
-            return (TEnum)Parse(typeof(TEnum), value);
-        }
+        [H5.Template("System.Enum.parse({TEnum}, {value}, {result})")]
+        public static extern TEnum Parse<TEnum>(string value) where TEnum : struct;
 
-        public static TEnum Parse<TEnum>(string value, bool ignoreCase) where TEnum : struct
-        {
-            return (TEnum)Parse(typeof(TEnum), value, ignoreCase);
-        }
+        [H5.Template("System.Enum.parse({TEnum}, {value}, {result})")]
+        public static extern TEnum Parse<TEnum>(string value, bool ignoreCase) where TEnum : struct;
 
-        public static TEnum[] GetValues<TEnum>() where TEnum : struct
-        {
-            return (TEnum[])GetValues(typeof(TEnum));
-        }
 
-        public static string[] GetNames<TEnum>() where TEnum : struct
-        {
-            return GetNames(typeof(TEnum));
-        }
+        [H5.Template("System.Enum.getValues({TEnum})")]
+        public static extern TEnum[] GetValues<TEnum>() where TEnum : struct;
 
-        public static bool IsDefined<TEnum>(TEnum value) where TEnum : struct
-        {
-            return IsDefined(typeof(TEnum), value);
-        }
+        [H5.Template("System.Enum.getNames({TEnum})")]
+        public static extern string[] GetNames<TEnum>() where TEnum : struct;
+
+        [H5.Template("System.Enum.isDefined({TEnum}, {value})")]
+        public static extern bool IsDefined<TEnum>(TEnum value) where TEnum : struct;
 
         [H5.Template("System.Enum.toString({this:type}, {this})", Fn = "System.Enum.toStringFn({this:type})")]
         public override extern string ToString();

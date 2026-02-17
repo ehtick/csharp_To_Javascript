@@ -10,56 +10,65 @@ namespace H5.Compiler.IntegrationTests.StandardLibrary
     public class BitConverterTests : IntegrationTestBase
     {
         [TestMethod]
-        public void TestSingleToInt32Bits()
+        public async Task TestSingleToInt32BitsAsync()
         {
-            RunTest(
+            await RunTest(
                 @"
-                // 1.0f -> 0x3f800000 (1065353216)
-                System.Console.WriteLine(BitConverter.SingleToInt32Bits(1.0f));
+using System;
 
-                // -1.0f -> 0xbf800000 (-1082130432)
-                System.Console.WriteLine(BitConverter.SingleToInt32Bits(-1.0f));
+public class Program
+{
+    public static void Main()
+    {
+        // 1.0f -> 0x3f800000 (1065353216)
+        Console.WriteLine(BitConverter.SingleToInt32Bits(1.0f));
 
-                // 0.0f -> 0
-                System.Console.WriteLine(BitConverter.SingleToInt32Bits(0.0f));
+        // -1.0f -> 0xbf800000 (-1082130432)
+        Console.WriteLine(BitConverter.SingleToInt32Bits(-1.0f));
 
-                // -0.0f -> 0x80000000 (-2147483648)
-                System.Console.WriteLine(BitConverter.SingleToInt32Bits(-0.0f));
+        // 0.0f -> 0
+        Console.WriteLine(BitConverter.SingleToInt32Bits(0.0f));
 
-                // Infinity -> 0x7f800000 (2139095040)
-                System.Console.WriteLine(BitConverter.SingleToInt32Bits(float.PositiveInfinity));
-                ",
-                @"1065353216
--1082130432
-0
--2147483648
-2139095040");
+        // -0.0f -> 0x80000000 (-2147483648)
+        Console.WriteLine(BitConverter.SingleToInt32Bits(-0.0f));
+
+        // Infinity -> 0x7f800000 (2139095040)
+        Console.WriteLine(BitConverter.SingleToInt32Bits(float.PositiveInfinity));
+    }
+}
+                ");
         }
 
         [TestMethod]
-        public void TestInt32BitsToSingle()
+        public async Task TestInt32BitsToSingleAsync()
         {
-            RunTest(
+            await RunTest(
                 @"
-                // 0x3f800000 -> 1.0f
-                System.Console.WriteLine(BitConverter.Int32BitsToSingle(1065353216).ToString(""F1""));
+using System;
 
-                // 0xbf800000 -> -1.0f
-                System.Console.WriteLine(BitConverter.Int32BitsToSingle(-1082130432).ToString(""F1""));
+public class Program
+{
+    public static void Main()
+    {
+        // 0x3f800000 -> 1.0f
+        Console.WriteLine(BitConverter.Int32BitsToSingle(1065353216).ToString(""F1""));
 
-                // 0 -> 0.0f
-                System.Console.WriteLine(BitConverter.Int32BitsToSingle(0).ToString(""F1""));
+        // 0xbf800000 -> -1.0f
+        Console.WriteLine(BitConverter.Int32BitsToSingle(-1082130432).ToString(""F1""));
 
-                // Round trip
-                float f = 123.456f;
-                int bits = BitConverter.SingleToInt32Bits(f);
-                float f2 = BitConverter.Int32BitsToSingle(bits);
-                System.Console.WriteLine(f == f2);
-                ",
-                @"1.0
--1.0
-0.0
-True");
+        // 0 -> 0.0f
+        Console.WriteLine(BitConverter.Int32BitsToSingle(0).ToString(""F1""));
+
+        // Round trip
+        float f = 123.456f;
+        int bits = BitConverter.SingleToInt32Bits(f);
+        float f2 = BitConverter.Int32BitsToSingle(bits);
+        Console.WriteLine(f);
+        Console.WriteLine(f2);
+        Console.WriteLine(f.ToString() == f2.ToString()); //Round trip on JS is not precise, so compare in a way that will ignore small errors
+    }
+}
+                ");
         }
     }
 }

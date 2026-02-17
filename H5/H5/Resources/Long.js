@@ -585,6 +585,20 @@
         return x ? new System.UInt64(x.value.toUnsigned()) : (H5.Int.isInfinite(x) ? System.UInt64.MinValue : null);
     };
 
+    System.Int64.bitIncrement = function(x) {
+        if (isNaN(x) || x === Number.POSITIVE_INFINITY) { return x; }
+        if (x === Number.NEGATIVE_INFINITY) { return System.Double.min; }
+        if (x === 0.0) { return 4.94065645841247E-324; }
+
+        var bits = System.BitConverter.doubleToInt64Bits(x);
+
+        if (bits.lessThan(0)) { bits = bits.add(-1); }
+        else { bits = bits.add(1); }
+        return System.BitConverter.int64BitsToDouble(bits);
+    };
+
+    System.Int64.bitDecrement = function (x) { return -System.Int64.bitIncrement(-x);};
+
     System.Int64.Zero = System.Int64(H5.$Long.ZERO);
     System.Int64.MinValue = System.Int64(H5.$Long.MIN_VALUE);
     System.Int64.MaxValue = System.Int64(H5.$Long.MAX_VALUE);

@@ -403,7 +403,7 @@
             var view = View(8).ToDynamic();
             view.setFloat64(0, value);
 
-            return H5.Script.Write<dynamic>("[view.getInt32(4), view.getInt32(0)]");
+            return H5.Script.Write<long>("new H5.$Long([view.getInt32(4), view.getInt32(0)])");
         }
 
         /// <summary>
@@ -516,8 +516,16 @@
         {
             var view = View(8);
 
-            H5.Script.Write("view.setInt32(4, value.value.low);");
-            H5.Script.Write("view.setInt32(0, value.value.high);");
+            if(H5.Script.Write<bool>("value.value"))
+            {
+                H5.Script.Write("view.setInt32(4, value.value.low);");
+                H5.Script.Write("view.setInt32(0, value.value.high);");
+            }
+            else
+            {
+                H5.Script.Write("view.setInt32(4, value.low);");
+                H5.Script.Write("view.setInt32(0, value.high);");
+            }
 
             return view;
         }

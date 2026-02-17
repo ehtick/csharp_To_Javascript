@@ -3,7 +3,7 @@
 namespace System
 {
     [H5.Convention(Member = H5.ConventionMember.Field | H5.ConventionMember.Method, Notation = H5.Notation.CamelCase)]
-    [H5.External]
+    [H5.Reflectable]
     public static class Convert
     {
         #region ToBoolean
@@ -630,7 +630,7 @@ namespace System
                 string hex = s.Substring(i * 2, 2);
                 try
                 {
-                    bytes[i] = Byte.Parse(hex, System.Globalization.NumberStyles.HexNumber);
+                    bytes[i] = ParseHexByte(hex);
                 }
                 catch (FormatException)
                 {
@@ -639,6 +639,47 @@ namespace System
             }
 
             return bytes;
+        }
+
+        private static byte ParseHexByte(string input)
+        {
+            if (input == null)
+                throw new ArgumentNullException(nameof(input));
+
+            if (input.Length == 0)
+                throw new FormatException("Input string was not in a correct format.");
+
+            int result = 0;
+
+            for (int i = 0; i < input.Length; i++)
+            {
+                char c = input[i];
+                int value;
+
+                if (c >= '0' && c <= '9')
+                {
+                    value = c - '0';
+                }
+                else if (c >= 'A' && c <= 'F')
+                {
+                    value = c - 'A' + 10;
+                }
+                else if (c >= 'a' && c <= 'f')
+                {
+                    value = c - 'a' + 10;
+                }
+                else
+                {
+                    throw new FormatException("Input string was not in a correct format.");
+                }
+
+                result = (result << 4) | value;
+
+                if (result > byte.MaxValue)
+                    throw new OverflowException("Value was either too large or too small for a byte.");
+            }
+
+            return (byte)result;
         }
 
         #endregion FromHexString

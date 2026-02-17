@@ -10,54 +10,54 @@ namespace H5.Compiler.IntegrationTests.StandardLibrary
     public class EnumTests : IntegrationTestBase
     {
         [TestMethod]
-        public void TestGenericMethods()
+        public async Task TestGenericMethodsAsync()
         {
-            RunTest(
+            await RunTest(
                 @"
-                enum Colors { Red = 1, Green = 2, Blue = 4 };
+using System;
 
-                // Parse
-                Colors c1 = Enum.Parse<Colors>(""Red"");
-                System.Console.WriteLine(c1);
+public class Program
+{
+    enum Colors { Red = 1, Green = 2, Blue = 4 };
+    public static void Main()
+    {
+        // Parse
+        Colors c0 = (Colors)(Enum.Parse(typeof(Colors), ""Red""));
+        Console.WriteLine(c0.ToString());
 
-                Colors c2 = Enum.Parse<Colors>(""green"", true);
-                System.Console.WriteLine(c2);
+        // Parse
+        Colors c1 = Enum.Parse<Colors>(""Red"");
+        Console.WriteLine(c1.ToString());
 
-                try {
-                    Enum.Parse<Colors>(""Yellow"");
-                } catch (ArgumentException) {
-                    System.Console.WriteLine(""Caught ArgumentException"");
-                }
+        Colors c2 = Enum.Parse<Colors>(""green"", true);
+        Console.WriteLine(c2.ToString());
 
-                // GetValues
-                var values = Enum.GetValues<Colors>();
-                foreach (var v in values)
-                {
-                    System.Console.WriteLine(v);
-                }
+        try {
+            Enum.Parse<Colors>(""Yellow"");
+        } catch (ArgumentException) {
+            Console.WriteLine(""Caught ArgumentException"");
+        }
 
-                // GetNames
-                var names = Enum.GetNames<Colors>();
-                foreach (var n in names)
-                {
-                    System.Console.WriteLine(n);
-                }
+        // GetValues
+        var values = Enum.GetValues<Colors>();
+        foreach (var v in values)
+        {
+            Console.WriteLine(v.ToString());
+        }
 
-                // IsDefined
-                System.Console.WriteLine(Enum.IsDefined<Colors>(Colors.Red));
-                System.Console.WriteLine(Enum.IsDefined<Colors>((Colors)5)); // Not defined
-                ",
-                @"Red
-Green
-Caught ArgumentException
-Red
-Green
-Blue
-Red
-Green
-Blue
-True
-False");
+        // GetNames
+        var names = Enum.GetNames<Colors>();
+        foreach (var n in names)
+        {
+            Console.WriteLine(n.ToString());
+        }
+
+        // IsDefined
+        Console.WriteLine(Enum.IsDefined<Colors>(Colors.Red));
+        Console.WriteLine(Enum.IsDefined<Colors>((Colors)5)); // Not defined
+    }
+}
+                ");
         }
     }
 }

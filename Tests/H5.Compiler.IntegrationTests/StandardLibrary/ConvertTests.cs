@@ -10,41 +10,51 @@ namespace H5.Compiler.IntegrationTests.StandardLibrary
     public class ConvertTests : IntegrationTestBase
     {
         [TestMethod]
-        public void TestToHexString()
+        public async Task TestToHexStringAsync()
         {
-            RunTest(
+            await RunTest(
                 @"
-                byte[] bytes = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF };
-                System.Console.WriteLine(Convert.ToHexString(bytes));
-                System.Console.WriteLine(Convert.ToHexString(bytes, 1, 2));
+using System;
 
-                System.Console.WriteLine(Convert.ToHexString(new byte[0]));
-                ",
-                @"DEADBEEF
-ADBE
-");
+public class Program
+{
+    public static void Main()
+    {
+        byte[] bytes = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF };
+        Console.WriteLine(Convert.ToHexString(bytes));
+        Console.WriteLine(Convert.ToHexString(bytes, 1, 2));
+
+        Console.WriteLine(Convert.ToHexString(new byte[0]));
+    }
+}");
         }
 
         [TestMethod]
-        public void TestFromHexString()
+        public async Task TestFromHexStringAsync()
         {
-            RunTest(
+            await RunTest(
                 @"
-                byte[] bytes = Convert.FromHexString(""DEADBEEF"");
-                foreach (var b in bytes)
-                {
-                    System.Console.Write(b.ToString(""X2""));
-                }
-                System.Console.WriteLine();
+using System;
 
-                bytes = Convert.FromHexString(""adbe""); // Case insensitive check
-                foreach (var b in bytes)
-                {
-                    System.Console.Write(b.ToString(""X2""));
-                }
-                ",
-                @"DEADBEEF
-ADBE");
+public class Program
+{
+    public static void Main()
+    {
+        byte[] bytes = Convert.FromHexString(""DEADBEEF"");
+        foreach (var b in bytes)
+        {
+            Console.WriteLine(b.ToString(""X2""));
+        }
+        Console.WriteLine();
+
+        bytes = Convert.FromHexString(""adbe""); // Case insensitive check
+        foreach (var b in bytes)
+        {
+            Console.WriteLine(b.ToString(""X2""));
+        }
+    }
+}
+                ");
         }
     }
 }

@@ -76,7 +76,7 @@ public class Console
 
 public static void ForceInvariantCultureAndUTF8Output()
 {
-    Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+    System.Threading.Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
     System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
 }
 ";

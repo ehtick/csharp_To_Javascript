@@ -10,58 +10,73 @@ namespace H5.Compiler.IntegrationTests.StandardLibrary
     public class RandomTests : IntegrationTestBase
     {
         [TestMethod]
-        public void TestNextInt64()
+        public async Task TestNextInt64Async()
         {
-            RunTest(
+            await RunTest(
                 @"
-                var r = new Random(42);
+using System;
 
-                // Unbounded
-                long l1 = r.NextInt64();
-                System.Console.WriteLine(l1 >= 0);
+public class Program
+{
+    public static void Main()
+    {
+        var r = new Random(42);
 
-                // Max value
-                long l2 = r.NextInt64(100);
-                System.Console.WriteLine(l2 >= 0 && l2 < 100);
+        // Unbounded
+        long l1 = r.NextInt64();
+        Console.WriteLine(l1 >= 0);
 
-                // Range
-                long l3 = r.NextInt64(50, 60);
-                System.Console.WriteLine(l3 >= 50 && l3 < 60);
+        // Max value
+        long l2 = r.NextInt64(100);
+        Console.WriteLine(l2 >= 0 && l2 < 100);
 
-                // Large Range
-                long l4 = r.NextInt64(long.MaxValue - 100, long.MaxValue);
-                System.Console.WriteLine(l4 >= (long.MaxValue - 100) && l4 < long.MaxValue);
-                ",
-                @"True
-True
-True
-True");
+        // Range
+        long l3 = r.NextInt64(50, 60);
+        Console.WriteLine(l3 >= 50 && l3 < 60);
+
+        // Large Range
+        long l4 = r.NextInt64(long.MaxValue - 100, long.MaxValue);
+        Console.WriteLine(l4 >= (long.MaxValue - 100) && l4 < long.MaxValue);
+    }
+}");
         }
 
         [TestMethod]
-        public void TestNextSingle()
+        public async Task TestNextSingleAsync()
         {
-            RunTest(
+            await RunTest(
                 @"
-                var r = new Random(42);
-                float f = r.NextSingle();
-                System.Console.WriteLine(f >= 0.0f && f < 1.0f);
-                ",
-                @"True");
+using System;
+
+public class Program
+{
+    public static void Main()
+    {
+        var r = new Random(42);
+        float f = r.NextSingle();
+        Console.WriteLine(f >= 0.0f && f < 1.0f);
+    }
+}");
         }
 
         [TestMethod]
-        public void TestShared()
+        public async Task TestSharedAsync()
         {
-            RunTest(
+            await RunTest(
                 @"
+using System;
+
+public class Program
+{
+    public static void Main()
+    {
+
                 // Just check it exists and works
                 var r = Random.Shared;
-                System.Console.WriteLine(r != null);
-                System.Console.WriteLine(r.Next() >= 0);
-                ",
-                @"True
-True");
+                Console.WriteLine(r != null);
+                Console.WriteLine(r.Next() >= 0);
+    }
+}");
         }
     }
 }

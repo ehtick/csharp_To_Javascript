@@ -12,6 +12,8 @@ namespace H5.Compiler.IntegrationTests
         {
         }
 
+        private static bool _wroteH5Once = false;
+
         protected async Task<string> RunTest(string csharpCode, string? waitForOutput = null, bool skipRoslyn = false, string overrideRoslynCode = null, bool includeCorePackages = false, [System.Runtime.CompilerServices.CallerMemberName] string membName = "", [System.Runtime.CompilerServices.CallerFilePath] string filePath = "")
         {
             string roslynOutput = "";
@@ -42,7 +44,15 @@ namespace H5.Compiler.IntegrationTests
                     var dumpPath = Path.Combine(Path.GetTempPath(), "H5.Tests.GeneratedJavascript");
                     Directory.CreateDirectory(dumpPath);
                     var tempPath = Path.Combine(dumpPath, fileName);
-                    File.WriteAllText(tempPath, extractedJs);
+                    await File.WriteAllTextAsync(tempPath, extractedJs);
+
+                    var rootH5 = Path.Combine(dumpPath, "h5.js");
+
+                    if (!File.Exists(rootH5) || !_wroteH5Once)
+                    {
+                        _wroteH5Once = true;
+                        await File.WriteAllTextAsync(rootH5, h5Js.Substring(0, index - 1));
+                    }
                 }
             }
             catch (Exception ex)

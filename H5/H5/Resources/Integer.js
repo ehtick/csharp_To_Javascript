@@ -862,7 +862,22 @@
                 }
 
                 return H5.Int.$mul(a, b) >>> 0;
-            }
+            },
+
+            bitIncrement: function (x) {
+                if (isNaN(x) || x === Number.POSITIVE_INFINITY) { return x; }
+                if (x === Number.NEGATIVE_INFINITY) { return -3.40282346638528859e+38; }
+                if (x === 0.0) { return 1.4e-45; }
+
+                var bits = System.BitConverter.singleToInt32Bits(x);
+
+                if (bits < 0) { bits = bits - 1; }
+                else { bits = bits + 1; }
+
+                return System.BitConverter.int32BitsToSingle(bits);
+            },
+
+            bitDecrement: function (x) { return -H5.Int.bitIncrement(-x); },
         }
     });
 
