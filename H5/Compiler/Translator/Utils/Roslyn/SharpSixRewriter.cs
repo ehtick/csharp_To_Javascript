@@ -3172,6 +3172,48 @@ namespace H5.Translator
             }
 
             var methodSymbol = semanticModel.GetDeclaredSymbol(node);
+
+            // Rewrite ValueTask -> Task in return type
+            if (methodSymbol != null && methodSymbol.ReturnType.Name == "ValueTask" && methodSymbol.ReturnType.ContainingNamespace?.Name == "Tasks" && methodSymbol.ReturnType.ContainingNamespace?.ContainingNamespace?.Name == "Threading")
+            {
+                var returnType = node.ReturnType;
+                if (methodSymbol.ReturnType is INamedTypeSymbol named && named.IsGenericType)
+                {
+                    // ValueTask<T> -> Task<T>
+                    var typeArg = named.TypeArguments[0];
+                    var typeArgSyntax = SyntaxHelper.GenerateTypeSyntax(typeArg, semanticModel, node.SpanStart, this);
+                    var newTaskType = SyntaxFactory.QualifiedName(
+                        SyntaxFactory.QualifiedName(
+                            SyntaxFactory.QualifiedName(
+                                SyntaxFactory.IdentifierName("System"),
+                                SyntaxFactory.IdentifierName("Threading")
+                            ),
+                            SyntaxFactory.IdentifierName("Tasks")
+                        ),
+                        SyntaxFactory.GenericName(
+                            SyntaxFactory.Identifier("Task"),
+                            SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(typeArgSyntax))
+                        )
+                    );
+                    node = node.WithReturnType(newTaskType.WithLeadingTrivia(returnType.GetLeadingTrivia()).WithTrailingTrivia(returnType.GetTrailingTrivia()));
+                }
+                else
+                {
+                    // ValueTask -> Task
+                    var newTaskType = SyntaxFactory.QualifiedName(
+                        SyntaxFactory.QualifiedName(
+                            SyntaxFactory.QualifiedName(
+                                SyntaxFactory.IdentifierName("System"),
+                                SyntaxFactory.IdentifierName("Threading")
+                            ),
+                            SyntaxFactory.IdentifierName("Tasks")
+                        ),
+                        SyntaxFactory.IdentifierName("Task")
+                    );
+                    node = node.WithReturnType(newTaskType.WithLeadingTrivia(returnType.GetLeadingTrivia()).WithTrailingTrivia(returnType.GetTrailingTrivia()));
+                }
+            }
+
             bool isModuleInitializer = false;
 
             if (methodSymbol != null)

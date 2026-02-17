@@ -262,8 +262,10 @@ namespace H5.VersionMatrix
             var output = new List<string>();
             var error = new List<string>();
 
-            process.OutputDataReceived += (s, e) => { if (e.Data != null) output.Add(e.Data); };
-            process.ErrorDataReceived += (s, e) => { if (e.Data != null) error.Add(e.Data); };
+            process.OutputDataReceived += (s, e) => { if (e.Data != null) { ClearCurrentConsoleLine(); Console.Write(LimitToConsoleWidth(e.Data)); output.Add(e.Data); } };
+            process.ErrorDataReceived += (s, e) => { if (e.Data != null) { ClearCurrentConsoleLine(); Console.Write(LimitToConsoleWidth(e.Data)); error.Add(e.Data); } };
+            
+            Console.WriteLine($"Running command: {command} {args}");
 
             try
             {
@@ -290,6 +292,20 @@ namespace H5.VersionMatrix
                 Console.WriteLine($"Error running command: {ex.Message}");
                 return false;
             }
+        }
+
+        public static string LimitToConsoleWidth(string input)
+        {
+            input = input.Replace("\n", "\\n").Replace("\r", "\\r").Trim();
+            if (input.Length > Console.WindowWidth) return input.Substring(0, Console.WindowWidth - 4) + "...";
+            return input;
+        }
+        public static void ClearCurrentConsoleLine()
+        {
+            int currentLineCursor = Console.CursorTop;
+            Console.SetCursorPosition(0, Console.CursorTop);
+            Console.Write(new string(' ', Console.WindowWidth)); 
+            Console.SetCursorPosition(0, currentLineCursor);
         }
 
         static void CopyDirectory(DirectoryInfo source, DirectoryInfo target, string excludePath = null)

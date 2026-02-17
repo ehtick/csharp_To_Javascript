@@ -67,6 +67,38 @@ public class Program
         }
 
         [TestMethod]
+        public async Task AsyncValueTask()
+        {
+            var code = """
+using System;
+using System.Threading.Tasks;
+
+public class Program
+{
+    public static async Task Main()
+    {
+        Console.WriteLine("Start");
+        await Run();
+        Console.WriteLine("End");
+        Console.WriteLine("<<DONE>>");
+    }
+
+    public static async ValueTask Run()
+    {
+        await DoAsync();
+    }
+
+    public static async ValueTask DoAsync()
+    {
+        await Task.Delay(10);
+        Console.WriteLine("Async ValueTask Completed");
+    }
+}
+""";
+            await RunTest(code, "<<DONE>>");
+        }
+
+        [TestMethod]
         public async Task AwaitTaskDelay()
         {
              var code = """
