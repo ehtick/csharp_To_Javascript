@@ -22,13 +22,44 @@ namespace H5.Fuzzer.Generator
 
         public MethodDeclarationSyntax GenerateMethod(string name)
         {
-            var returnType = _types.GetRandomType(); // Random return type
+            var isAsync = _random.NextDouble() < 0.4;
+            TypeSyntax returnType;
+
+            if (isAsync)
+            {
+                returnType = _types.GetRandomTaskType();
+            }
+            else
+            {
+                returnType = _types.GetRandomType();
+            }
+
             var parameters = GenerateParameters();
 
+            // Initial scope with parameters
+            var parameterVars = new List<Variable>();
+            foreach (var p in parameters)
+            {
+                parameterVars.Add(new Variable { Name = p.Identifier.Text, Type = p.Type });
+            }
+            var initialScope = new Scope(parameterVars);
+
+            var modifiers = TokenList(Token(SyntaxKind.PublicKeyword), Token(SyntaxKind.StaticKeyword));
+            if (isAsync)
+            {
+                modifiers = modifiers.Add(Token(SyntaxKind.AsyncKeyword));
+            }
+
+            var bodyReturnType = returnType;
+            if (isAsync)
+            {
+                bodyReturnType = _types.GetUnwrappedTaskType(returnType);
+            }
+
             var method = MethodDeclaration(returnType, name)
-                .WithModifiers(TokenList(Token(SyntaxKind.PublicKeyword), Token(SyntaxKind.StaticKeyword)))
+                .WithModifiers(modifiers)
                 .WithParameterList(ParameterList(SeparatedList(parameters)))
-                .WithBody(Block(_statements.GenerateStatements(5, 0, returnType)));
+                .WithBody(Block(_statements.GenerateStatements(5, 0, bodyReturnType, initialScope, isAsync)));
 
             return method;
         }

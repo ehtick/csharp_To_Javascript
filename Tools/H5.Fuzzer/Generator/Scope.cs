@@ -14,7 +14,19 @@ namespace H5.Fuzzer.Generator
 
     public class Scope
     {
-        private List<Variable> _variables = new List<Variable>();
+        private readonly List<Variable> _variables = new List<Variable>();
+        private readonly Scope _parent;
+
+        public Scope(Scope parent = null)
+        {
+            _parent = parent;
+        }
+
+        public Scope(IEnumerable<Variable> variables, Scope parent = null) : this(parent)
+        {
+            if (variables != null)
+                _variables.AddRange(variables);
+        }
 
         public void AddVariable(string name, TypeSyntax type)
         {
@@ -23,10 +35,19 @@ namespace H5.Fuzzer.Generator
 
         public Variable GetRandomVariable(Random random)
         {
-            if (_variables.Count == 0) return null;
-            return _variables[random.Next(_variables.Count)];
+            var all = GetVariables();
+            if (all.Count == 0) return null;
+            return all[random.Next(all.Count)];
         }
         
-        public List<Variable> GetVariables() => _variables;
+        public List<Variable> GetVariables()
+        {
+            var list = new List<Variable>(_variables);
+            if (_parent != null)
+            {
+                list.AddRange(_parent.GetVariables());
+            }
+            return list;
+        }
     }
 }

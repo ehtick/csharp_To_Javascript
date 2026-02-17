@@ -20,7 +20,7 @@ namespace H5.Fuzzer.Infrastructure
             }
         }
 
-        public async Task<string> RunJsAsync(string jsCode)
+        public async Task<string> RunJsAsync(string jsCode, string waitForOutput = null)
         {
             if (_playwright == null)
             {
@@ -31,12 +31,17 @@ namespace H5.Fuzzer.Infrastructure
             var page = await context.NewPageAsync();
 
             var consoleOutput = new StringBuilder();
+            var outputComplete = new TaskCompletionSource<bool>();
             
             page.Console += (_, msg) =>
             {
                 if (msg.Type == "log")
                 {
                     consoleOutput.AppendLine(msg.Text);
+                    if (waitForOutput != null && msg.Text.Contains(waitForOutput))
+                    {
+                        outputComplete.TrySetResult(true);
+                    }
                 }
             };
 
@@ -68,6 +73,11 @@ namespace H5.Fuzzer.Infrastructure
                 //";
 
                 await page.EvaluateAsync(jsCode); // + "\n" + bootstrap
+
+                if (waitForOutput != null)
+                {
+                    await Task.WhenAny(outputComplete.Task, Task.Delay(30000));
+                }
             }
             catch (Exception e)
             {

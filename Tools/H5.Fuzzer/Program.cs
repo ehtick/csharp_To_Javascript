@@ -143,7 +143,7 @@ namespace H5.Fuzzer
                     h5Js = await H5Runner.CompileToJs(code);
                     
                     // Run H5
-                    h5Output = await playwrightRunner.RunJsAsync(h5Js);
+                    h5Output = await playwrightRunner.RunJsAsync(h5Js, "Program End");
                     h5Output = NormalizeOutput(h5Output);
 
                     if (roslynOutput != h5Output)
@@ -170,11 +170,14 @@ namespace H5.Fuzzer
                     string logFilename = Path.Combine(output, $"fail_{currentSeed}.log");
                     
                     var appJsMarker = "// File: App.js";
-                    var index = h5Js.IndexOf(appJsMarker);
-                    if (index >= 0)
+                    if (h5Js != null)
                     {
-                        var extractedJs = h5Js.Substring(index);
-                        await File.WriteAllTextAsync(jsFilename, extractedJs);
+                        var index = h5Js.IndexOf(appJsMarker);
+                        if (index >= 0)
+                        {
+                            var extractedJs = h5Js.Substring(index);
+                            await File.WriteAllTextAsync(jsFilename, extractedJs);
+                        }
                     }
 
                     await File.WriteAllTextAsync(filename, code);
