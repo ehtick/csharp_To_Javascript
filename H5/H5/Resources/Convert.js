@@ -719,7 +719,7 @@
                 throw new System.ArgumentNullException.$ctor1("byteArray");
             }
 
-            return toHexStringRange(byteArray, 0, byteArray.length);
+            return scope.convert.toHexStringRange(byteArray, 0, byteArray.length);
         },
 
         toHexStringRange: function (byteArray, offset, length) {
@@ -753,7 +753,7 @@
             return hex;
         },
 
-        fromHexString: function fromHexString(s) {
+        fromHexString: function (s) {
             if (s == null) {
                 throw new System.ArgumentNullException.$ctor1("s");
             }
@@ -768,7 +768,7 @@
                 const hex = s.substring(i * 2, i * 2 + 2);
 
                 try {
-                    bytes[i] = parseHexByte(hex);
+                    bytes[i] = scope.convert.parseHexByte(hex);
                 } catch (err) {
                     throw new System.ArgumentException.$ctor1("The string contains invalid hex characters.");
                 }
@@ -811,7 +811,6 @@
 
             return result;
         },
-
 
 
         getTypeCode: function (t) {

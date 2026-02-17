@@ -570,7 +570,7 @@ namespace System
         [H5.Template("System.Convert.toHexString({inArray})")]
         public static extern string ToHexString(byte[] inArray);
 
-        [H5.Template("System.Convert.toHexString({inArray}, {offset}, {length})")]
+        [H5.Template("System.Convert.toHexStringRange({inArray}, {offset}, {length})")]
         public static extern string ToHexString(byte[] inArray, int offset, int length);
 
         #endregion ToHexString
