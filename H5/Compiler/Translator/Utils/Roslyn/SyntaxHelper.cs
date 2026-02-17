@@ -474,7 +474,14 @@ namespace H5.Translator
 
             var result = SyntaxFactory.ParseTypeName(type.GetFullyQualifiedNameAndValidate(model, pos));
 
-            return FixAliasQualifiedName(result);
+            result = FixAliasQualifiedName(result);
+
+            if (result.ToString().StartsWith("::"))
+            {
+                result = SyntaxFactory.ParseTypeName(CS.NS.GLOBAL + result.ToString().Substring(2));
+            }
+
+            return result;
         }
 
         private static TypeSyntax FixAliasQualifiedName(TypeSyntax node)
