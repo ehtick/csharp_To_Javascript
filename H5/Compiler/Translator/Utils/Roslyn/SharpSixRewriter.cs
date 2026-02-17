@@ -2353,7 +2353,7 @@ namespace H5.Translator
 
                             if (method.IsGenericMethod && method.TypeArguments.Length == 1 && method.Parameters.Length > 0 && SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, method.TypeArguments[0]))
                             {
-                                var targetExpression = (node.Expression as MemberAccessExpressionSyntax)?.Expression;
+                                var targetExpression = (originalNode.Expression as MemberAccessExpressionSyntax)?.Expression;
                                 if (targetExpression != null)
                                 {
                                     var targetType = semanticModel.GetTypeInfo(targetExpression).Type;
