@@ -7,6 +7,29 @@ namespace H5.Compiler.IntegrationTests.UnimplementedLanguageFeatures
     public class AbusiveTests : IntegrationTestBase
     {
         [TestMethod]
+        public async Task ConditionalCompilation()
+        {
+            var code = """
+    using System;
+    #if H5
+    using MYTYPE = System.DateTime;
+    #else
+    using MYTYPE = System.DateTimeOffset;
+    #endif
+    public class Program
+    {
+        public static void Main()
+        {
+            Console.WriteLine(typeof(MYTYPE).FullName);
+            Console.WriteLine("done");
+        }
+    }
+    """;
+            await RunTest(code);
+        }
+
+
+        [TestMethod]
         public async Task DeeplyNestedPatternMatching()
         {
             var code = """
