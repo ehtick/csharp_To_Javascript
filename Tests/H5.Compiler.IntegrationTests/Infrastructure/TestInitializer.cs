@@ -3,15 +3,24 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Threading;
+using System.Text;
+using System.Globalization;
 
 namespace H5.Compiler.IntegrationTests
 {
     [TestClass]
     public static class TestInitializer
     {
+        public static TimeZoneInfo LocalTimeZone;
+        public static CultureInfo LocalCulture;
+        public static bool ConsoleAvailable;
+
         [AssemblyInitialize]
         public static void AssemblyInitialize(TestContext context)
         {
+            ForceInvariantCultureAndUTF8Output();
+
             // Initialize MSBuild
             try
             {
@@ -61,6 +70,39 @@ namespace H5.Compiler.IntegrationTests
             {
                 Console.WriteLine($"Error installing Playwright: {ex}");
             }
+        }
+
+        public static void ForceInvariantCultureAndUTF8Output()
+        {
+            LocalTimeZone = TimeZoneInfo.Local;
+            LocalCulture = Thread.CurrentThread.CurrentUICulture;
+
+            try
+            {
+                Console.OutputEncoding = Encoding.UTF8;
+                ConsoleAvailable = true;
+            }
+            catch
+            {
+                //This might throw if not running on a console, ignore as we don't care in that case
+                ConsoleAvailable = false;
+            }
+
+            if (ConsoleAvailable)
+            {
+                try
+                {
+                    Console.InputEncoding = Encoding.UTF8;
+                }
+                catch
+                {
+                    //This might throw if not running on a console that reads input, ignore as we don't care in that case
+                }
+            }
+
+
+            Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+            System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
         }
     }
 }

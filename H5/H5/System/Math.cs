@@ -317,5 +317,301 @@ namespace System
 
         [H5.Template("H5.Math.tanh({value})")]
         public static extern double Tanh(double value);
+
+        public static byte Clamp(byte value, byte min, byte max)
+        {
+            if (min > max)
+            {
+                throw new ArgumentException("min > max");
+            }
+
+            if (value < min)
+            {
+                return min;
+            }
+            else if (value > max)
+            {
+                return max;
+            }
+
+            return value;
+        }
+
+        public static decimal Clamp(decimal value, decimal min, decimal max)
+        {
+            if (min > max)
+            {
+                throw new ArgumentException("min > max");
+            }
+
+            if (value < min)
+            {
+                return min;
+            }
+            else if (value > max)
+            {
+                return max;
+            }
+
+            return value;
+        }
+
+        public static double Clamp(double value, double min, double max)
+        {
+            if (min > max)
+            {
+                throw new ArgumentException("min > max");
+            }
+
+            if (value < min)
+            {
+                return min;
+            }
+            else if (value > max)
+            {
+                return max;
+            }
+
+            return value;
+        }
+
+        public static float Clamp(float value, float min, float max)
+        {
+            if (min > max)
+            {
+                throw new ArgumentException("min > max");
+            }
+
+            if (value < min)
+            {
+                return min;
+            }
+            else if (value > max)
+            {
+                return max;
+            }
+
+            return value;
+        }
+
+        public static int Clamp(int value, int min, int max)
+        {
+            if (min > max)
+            {
+                throw new ArgumentException("min > max");
+            }
+
+            if (value < min)
+            {
+                return min;
+            }
+            else if (value > max)
+            {
+                return max;
+            }
+
+            return value;
+        }
+
+        public static long Clamp(long value, long min, long max)
+        {
+            if (min > max)
+            {
+                throw new ArgumentException("min > max");
+            }
+
+            if (value < min)
+            {
+                return min;
+            }
+            else if (value > max)
+            {
+                return max;
+            }
+
+            return value;
+        }
+
+        public static sbyte Clamp(sbyte value, sbyte min, sbyte max)
+        {
+            if (min > max)
+            {
+                throw new ArgumentException("min > max");
+            }
+
+            if (value < min)
+            {
+                return min;
+            }
+            else if (value > max)
+            {
+                return max;
+            }
+
+            return value;
+        }
+
+        public static short Clamp(short value, short min, short max)
+        {
+            if (min > max)
+            {
+                throw new ArgumentException("min > max");
+            }
+
+            if (value < min)
+            {
+                return min;
+            }
+            else if (value > max)
+            {
+                return max;
+            }
+
+            return value;
+        }
+
+        public static uint Clamp(uint value, uint min, uint max)
+        {
+            if (min > max)
+            {
+                throw new ArgumentException("min > max");
+            }
+
+            if (value < min)
+            {
+                return min;
+            }
+            else if (value > max)
+            {
+                return max;
+            }
+
+            return value;
+        }
+
+        public static ulong Clamp(ulong value, ulong min, ulong max)
+        {
+            if (min > max)
+            {
+                throw new ArgumentException("min > max");
+            }
+
+            if (value < min)
+            {
+                return min;
+            }
+            else if (value > max)
+            {
+                return max;
+            }
+
+            return value;
+        }
+
+        public static ushort Clamp(ushort value, ushort min, ushort max)
+        {
+            if (min > max)
+            {
+                throw new ArgumentException("min > max");
+            }
+
+            if (value < min)
+            {
+                return min;
+            }
+            else if (value > max)
+            {
+                return max;
+            }
+
+            return value;
+        }
+
+        [H5.Template("((1.0 / {y}) < 0 ? -1.0 : 1.0) * System.Math.abs({x})")]
+        public static extern double CopySign(double x, double y);
+
+        public static double MaxMagnitude(double x, double y)
+        {
+            double ax = Math.Abs(x);
+            double ay = Math.Abs(y);
+
+            if (ax > ay)
+            {
+                return x;
+            }
+
+            if (ax == ay)
+            {
+                return x > y ? x : y;
+            }
+
+            return y;
+        }
+
+        public static double MinMagnitude(double x, double y)
+        {
+            double ax = Math.Abs(x);
+            double ay = Math.Abs(y);
+
+            if (ax < ay)
+            {
+                return x;
+            }
+
+            if (ax == ay)
+            {
+                return x < y ? x : y;
+            }
+
+            return y;
+        }
+
+        [H5.Template("H5.Math.logWithBase({x}, 2.0)")]
+        public static extern double Log2(double x);
+
+        [H5.Template("({x} * {y}) + {z}")]
+        public static extern double FusedMultiplyAdd(double x, double y, double z);
+
+        [H5.Template("1.0 / {x}")]
+        public static extern double ReciprocalEstimate(double x);
+
+        [H5.Template("1.0 / System.Math.sqrt({x})")]
+        public static extern double ReciprocalSqrtEstimate(double x);
+
+        public static double BitIncrement(double x)
+        {
+            if (double.IsNaN(x) || x == double.PositiveInfinity)
+            {
+                return x;
+            }
+
+            if (x == double.NegativeInfinity)
+            {
+                return double.MinValue;
+            }
+
+            if (x == 0.0)
+            {
+                return double.Epsilon;
+            }
+
+            long bits = BitConverter.DoubleToInt64Bits(x);
+
+            if (bits < 0)
+            {
+                bits--;
+            }
+            else
+            {
+                bits++;
+            }
+
+            return BitConverter.Int64BitsToDouble(bits);
+        }
+
+        public static double BitDecrement(double x)
+        {
+            return -BitIncrement(-x);
+        }
     }
 }

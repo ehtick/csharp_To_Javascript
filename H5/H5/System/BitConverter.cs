@@ -418,6 +418,32 @@
             return view.ToDynamic().getFloat64(0);
         }
 
+        /// <summary>
+        /// Converts the specified single-precision floating point number to a 32-bit signed integer.
+        /// </summary>
+        /// <param name="value">The number to convert.</param>
+        /// <returns>A 32-bit signed integer whose value is equivalent to value.</returns>
+        public static int SingleToInt32Bits(float value)
+        {
+            var view = View(4).ToDynamic();
+            view.setFloat32(0, value);
+
+            return view.getInt32(0);
+        }
+
+        /// <summary>
+        /// Converts the specified 32-bit signed integer to a single-precision floating point number.
+        /// </summary>
+        /// <param name="value">The number to convert.</param>
+        /// <returns>A single-precision floating point number whose value is equivalent to value.</returns>
+        public static float Int32BitsToSingle(int value)
+        {
+            var view = View(4).ToDynamic();
+            view.setInt32(0, value);
+
+            return view.getFloat32(0);
+        }
+
         private static char GetHexValue(int i)
         {
             if (i < 10)

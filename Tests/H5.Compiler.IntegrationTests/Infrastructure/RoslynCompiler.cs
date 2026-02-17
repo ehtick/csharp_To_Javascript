@@ -73,11 +73,20 @@ public class Console
     public static void WriteLine(string value) => Impl?.WriteLine(value);
     public static void WriteLine(string format, params object[] arg) => Impl?.WriteLine(format, arg);
 }
+
+public static void ForceInvariantCultureAndUTF8Output()
+{
+    Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+    System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+}
 ";
 
             // 3. Initialization Code
             // GlobalConsole is a property of ScriptGlobals
-            var initCode = "Console.Impl = GlobalConsole;";
+            var initCode = @"
+Console.Impl = GlobalConsole;
+ForceInvariantCultureAndUTF8Output();
+";
 
             // 4. Invocation Code
             // We need to find the entry point (Program.Main)
