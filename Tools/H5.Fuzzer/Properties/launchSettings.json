@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "H5.Fuzzer": {
+      "commandName": "Project",
+      "commandLineArgs": "--minutes 5 --output d:\\tmp\\fuzzer\\"
+    }
+  }
+}
