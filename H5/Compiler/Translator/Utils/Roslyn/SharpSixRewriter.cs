@@ -105,6 +105,40 @@ namespace H5.Translator
         }
 
 
+        private string GetRelativePath(string filespec, string folder)
+        {
+            Uri pathUri = new Uri(filespec);
+            // Folders must end in a slash
+            if (!folder.EndsWith(Path.DirectorySeparatorChar.ToString()))
+            {
+                folder += Path.DirectorySeparatorChar;
+            }
+            Uri folderUri = new Uri(folder);
+            return Uri.UnescapeDataString(folderUri.MakeRelativeUri(pathUri).ToString().Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private void WriteDebugFile(int index, string rewrittenCode)
+        {
+            var fileName = translator.SourceFiles[index];
+            var projectPath = Path.GetDirectoryName(translator.Location);
+            var relativePath = GetRelativePath(fileName, projectPath);
+
+            if (relativePath.StartsWith(".."))
+            {
+                relativePath = Path.GetFileName(fileName);
+            }
+
+            var tempFilePath = Path.Combine(Path.GetTempPath(), "h5", "rewritten", GetAssemblyName(), relativePath);
+            var dir = Path.GetDirectoryName(tempFilePath);
+
+            if (!Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            File.WriteAllText(tempFilePath, rewrittenCode);
+        }
+
         private string GetCacheFile()
         {
             return translator.AssemblyLocation.Replace(@"\bin\", @"\obj\").Replace(@"/bin/", @"/obj/") + ".h5.rewriter.cache";
@@ -154,16 +188,15 @@ namespace H5.Translator
             }
         }
 
-        private bool TryGetFromCache(int index, out string cached)
+        private bool TryGetFromCache(int index, UID128 sourceHash, out string cached)
         {
 #if DEBUG
             cached = null;
             return false;
 #endif
             var fileName = translator.SourceFiles[index];
-            var hashedSource = File.ReadAllText(fileName).Hash128();
 
-            if(_cachedRewrittenData.CachedCompilation.TryGetValue(fileName, out var cachedData) && cachedData.hash == hashedSource)
+            if(_cachedRewrittenData.CachedCompilation.TryGetValue(fileName, out var cachedData) && cachedData.hash == sourceHash)
             {
                 cached = cachedData.code;
                 return true;
@@ -175,13 +208,12 @@ namespace H5.Translator
             }
         }
 
-        private string AddToCache(int index, string rewritten)
+        private string AddToCache(int index, string rewritten, UID128 sourceHash)
         {
             //TODO: use https://www.nuget.org/packages/CSharpMinifier/
             var fileName = translator.SourceFiles[index];
-            var hashedSource = File.ReadAllText(fileName).Hash128();
 
-            _cachedRewrittenData.CachedCompilation[fileName] = (hashedSource, rewritten);
+            _cachedRewrittenData.CachedCompilation[fileName] = (sourceHash, rewritten);
 
             return rewritten;
         }
@@ -189,8 +221,16 @@ namespace H5.Translator
 
         public string Rewrite(int index)
         {
-            if(TryGetFromCache(index, out var cached))
+            var sourceText = File.ReadAllText(translator.SourceFiles[index]);
+            var sourceHash = sourceText.Hash128();
+            var debugRewrite = sourceText.TrimStart().StartsWith("//DEBUG REWRITE");
+
+            if (TryGetFromCache(index, sourceHash, out var cached))
             {
+                if (debugRewrite)
+                {
+                    WriteDebugFile(index, cached);
+                }
                 return cached;
             }
 
@@ -270,7 +310,15 @@ namespace H5.Translator
 
             modelUpdater(result);
 
-            return AddToCache(index, newTree.GetRoot().ToFullString());
+            var rewritten = newTree.GetRoot().ToFullString();
+            AddToCache(index, rewritten, sourceHash);
+
+            if (debugRewrite)
+            {
+                WriteDebugFile(index, rewritten);
+            }
+
+            return rewritten;
         }
 
         private string GetUniqueTempKey(string prefix)
