@@ -50,8 +50,7 @@ public class Program
         if (!hasValuePascal) throw new Exception(""Property 'Value' should exist"");
     }
 }";
-            var output = await RunTest(code, skipRoslyn: true);
-            Console.WriteLine(output);
+            await RunTest(code, skipRoslyn: true);
         }
 
         [TestMethod]
@@ -90,8 +89,7 @@ public class Program
         if (o.B != 20) throw new Exception(""Property 'B' should have value 20"");
     }
 }";
-            var output = await RunTest(code, skipRoslyn: true);
-            Console.WriteLine(output);
+            await RunTest(code, skipRoslyn: true);
         }
 
         [TestMethod]
@@ -127,8 +125,7 @@ public class Program
         if (hasX) throw new Exception(""Property 'X' should NOT exist in Ignore mode"");
     }
 }";
-            var output = await RunTest(code, skipRoslyn: true);
-            Console.WriteLine(output);
+            await RunTest(code, skipRoslyn: true);
         }
 
         [TestMethod]
@@ -167,8 +164,7 @@ namespace TestNamespace
     }
 }
 ";
-            var output = await RunTest(code, skipRoslyn: true);
-            Console.WriteLine(output);
+            await RunTest(code, skipRoslyn: true);
         }
 
         [TestMethod]
@@ -199,8 +195,68 @@ public class Program
             // For now, printing to console is what was requested ("prints enough info to verify").
             // The CustomLog does exactly that.
 
-            var output = await RunTest(code, skipRoslyn: true);
-            Console.WriteLine(output);
+            await RunTest(code, skipRoslyn: true);
+        }
+
+        [TestMethod]
+        public async Task TestEnumAttribute()
+        {
+            var code = @"
+using H5;
+using System;
+
+[Enum(Emit.Value)]
+public enum EnumValue { A = 1, B = 2 }
+
+[Enum(Emit.StringName)]
+public enum EnumString { First, Second }
+
+[Enum(Emit.StringNamePreserveCase)]
+public enum EnumPreserve { MixedCase, UPPERCASE }
+
+[Enum(Emit.StringNameLowerCase)]
+public enum EnumLower { SomeValue }
+
+[Enum(Emit.StringNameUpperCase)]
+public enum EnumUpper { otherValue }
+
+public class Program
+{
+    public static void Main()
+    {
+        // Emit.Value -> checks value
+        object valA = EnumValue.A;
+        Console.WriteLine(""ValA: "" + valA);
+        if (valA.ToString() != ""1"") throw new Exception(""EnumValue.A should be 1"");
+
+        // Emit.StringName -> defaults to camelCase in H5 unless configured otherwise?
+        // Let's check what it emits. Usually StringName means string representation.
+        // H5 default for StringName is often the name as string.
+        object valFirst = EnumString.First;
+        Console.WriteLine(""EnumString.First: "" + valFirst);
+        // Note: H5 default notation might affect this, but StringName usually emits the name.
+        // Let's verify if it's a string.
+        if (!(valFirst is string)) throw new Exception(""EnumString should emit string"");
+        // Verify value - standard behavior for StringName is usually the name (First).
+        if ((string)valFirst != ""First"") throw new Exception(""EnumString.First should be 'First'"");
+
+        // Emit.StringNamePreserveCase
+        object valMixed = EnumPreserve.MixedCase;
+        Console.WriteLine(""EnumPreserve.MixedCase: "" + valMixed);
+        if ((string)valMixed != ""MixedCase"") throw new Exception(""EnumPreserve.MixedCase should be 'MixedCase'"");
+
+        // Emit.StringNameLowerCase
+        object valLower = EnumLower.SomeValue;
+        Console.WriteLine(""EnumLower.SomeValue: "" + valLower);
+        if ((string)valLower != ""somevalue"") throw new Exception(""EnumLower.SomeValue should be 'somevalue'"");
+
+        // Emit.StringNameUpperCase
+        object valUpper = EnumUpper.otherValue;
+        Console.WriteLine(""EnumUpper.otherValue: "" + valUpper);
+        if ((string)valUpper != ""OTHERVALUE"") throw new Exception(""EnumUpper.otherValue should be 'OTHERVALUE'"");
+    }
+}";
+            await RunTest(code, skipRoslyn: true);
         }
     }
 }
