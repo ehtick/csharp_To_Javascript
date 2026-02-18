@@ -333,8 +333,8 @@ namespace H5.Fuzzer.Generator
         public TypeSyntax GetRandomTaskType()
         {
             // Either Task or Task<T>
-            if (_random.NextDouble() < 0.3) return IdentifierName("Task");
-            return GenericName(Identifier("Task")).WithTypeArgumentList(TypeArgumentList(SingletonSeparatedList(GetRandomType())));
+            if (_random.NextDouble() < 0.3) return ParseTypeName("System.Threading.Tasks.Task");
+            return GenericName(Identifier("System.Threading.Tasks.Task")).WithTypeArgumentList(TypeArgumentList(SingletonSeparatedList(GetRandomType())));
         }
 
         public TypeSyntax GetRandomExceptionType()

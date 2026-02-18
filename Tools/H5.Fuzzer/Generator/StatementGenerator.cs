@@ -277,7 +277,7 @@ namespace H5.Fuzzer.Generator
                      InvocationExpression(
                          MemberAccessExpression(
                              SyntaxKind.SimpleMemberAccessExpression,
-                             IdentifierName("Task"),
+                             ParseTypeName("System.Threading.Tasks.Task"),
                              IdentifierName("Yield"))));
                  return ExpressionStatement(awaitYield);
              }
@@ -286,7 +286,7 @@ namespace H5.Fuzzer.Generator
                   var awaitCompleted = AwaitExpression(
                       MemberAccessExpression(
                              SyntaxKind.SimpleMemberAccessExpression,
-                             IdentifierName("Task"),
+                             ParseTypeName("System.Threading.Tasks.Task"),
                              IdentifierName("CompletedTask")));
                   return ExpressionStatement(awaitCompleted);
              }
