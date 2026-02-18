@@ -150,6 +150,23 @@ namespace H5.Fuzzer
                     {
                          error = $"Output mismatch.\n\nRoslyn:\n---------------\n{roslynOutput}\n---------------\n\nH5:\n---------------\n{h5Output}\n---------------";
                          Console.WriteLine("FAIL: Output mismatch.");
+
+                         try
+                         {
+                             var minimizer = new Minimizer(playwrightRunner);
+                             var minimizedCode = await minimizer.MinimizeAsync(code);
+
+                             if (minimizedCode != code)
+                             {
+                                 string minFilename = Path.Combine(output, $"fail_{currentSeed}_min.cs");
+                                 await File.WriteAllTextAsync(minFilename, minimizedCode);
+                                 Console.WriteLine($"Minimized failure saved to {minFilename}");
+                             }
+                         }
+                         catch (Exception minEx)
+                         {
+                             Console.WriteLine($"Minimization failed: {minEx}");
+                         }
                     }
                     else
                     {

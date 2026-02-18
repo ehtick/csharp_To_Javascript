@@ -12,13 +12,13 @@ namespace H5.Fuzzer.Generator
     {
         private readonly Random _random;
         private readonly TypeManager _types;
-        private readonly List<MethodDeclarationSyntax> _methods;
 
-        public ExpressionGenerator(Random random, TypeManager types, List<MethodDeclarationSyntax> methods)
+        // We don't need _methods list anymore as methods are on types.
+
+        public ExpressionGenerator(Random random, TypeManager types)
         {
             _random = random;
             _types = types;
-            _methods = methods;
         }
 
         public ExpressionSyntax GenerateConstant(TypeSyntax targetType)
@@ -35,11 +35,13 @@ namespace H5.Fuzzer.Generator
                 return GenerateSimple(targetType, scope);
             }
 
-            int type = _random.Next(5);
+            int type = _random.Next(6); // Increased options
             
-            if (type == 1 && scope.GetVariables().FirstOrDefault(v => AreTypesEquivalent(v.Type, targetType)) == null) type = 0;
-            if (type == 3 && !_methods.Any(m => AreTypesEquivalent(m.ReturnType, targetType))) type = 0;
-            if (type == 4 && !isAsync) type = 0;
+            // Constraints
+            if (type == 1 && scope.GetVariables().FirstOrDefault(v => AreTypesEquivalent(v.Type, targetType)) == null) type = 0; // Variable
+            if (type == 3 && !CanCallMethod(targetType, scope)) type = 0; // Method call
+            if (type == 4 && !isAsync) type = 0; // Await
+            if (type == 5 && !CanInstantiate(targetType)) type = 0; // Object creation
 
             switch (type)
             {
@@ -48,6 +50,7 @@ namespace H5.Fuzzer.Generator
                 case 2: return GenerateBinary(targetType, scope, depth, isAsync);
                 case 3: return GenerateMethodCall(targetType, scope, depth, isAsync);
                 case 4: return GenerateAwaitExpression(targetType, scope, depth, isAsync);
+                case 5: return GenerateObjectCreation(targetType, scope, depth, isAsync);
                 default: return GenerateLiteral(targetType);
             }
         }
@@ -79,6 +82,7 @@ namespace H5.Fuzzer.Generator
             }
             if (_types.IsTask(targetType))
             {
+                 // Return completed task
                 if (targetType is GenericNameSyntax gen)
                 {
                     var inner = gen.TypeArgumentList.Arguments[0];
@@ -91,7 +95,15 @@ namespace H5.Fuzzer.Generator
                     return MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, IdentifierName("Task"), IdentifierName("CompletedTask"));
                 }
             }
-            return LiteralExpression(SyntaxKind.DefaultLiteralExpression);
+
+            // For custom types, try to instantiate or return default
+            if (CanInstantiate(targetType))
+            {
+                 // Create a simple instance with no initializer to avoid recursion loops
+                 return ObjectCreationExpression(targetType).WithArgumentList(ArgumentList());
+            }
+
+            return DefaultExpression(targetType);
         }
 
         private ExpressionSyntax GenerateVariable(TypeSyntax targetType, Scope scope)
@@ -99,6 +111,8 @@ namespace H5.Fuzzer.Generator
              var vars = scope.GetVariables().Where(v => AreTypesEquivalent(v.Type, targetType)).ToList();
              if (vars.Count > 0)
              {
+                 // Also consider property access on available variables?
+                 // Handled in GenerateMethodCall/MemberAccess logic usually but simple variable access is just name.
                  return IdentifierName(vars[_random.Next(vars.Count)].Name);
              }
              return GenerateLiteral(targetType);
@@ -125,16 +139,16 @@ namespace H5.Fuzzer.Generator
                  if (_random.NextDouble() < 0.5)
                  {
                      var operandType = _types.GetRandomType(); 
-                     // Ensure numeric comparison if types are numeric, otherwise equality
-                     // But we need to ensure left and right match types.
                      
                      var left = GenerateExpression(operandType, scope, depth + 1, false, isAsync);
                      var right = GenerateExpression(operandType, scope, depth + 1, false, isAsync);
                      
                      if (_types.IsNumeric(operandType)) {
                          return BinaryExpression(SyntaxKind.LessThanExpression, ParenthesizedExpression(left), ParenthesizedExpression(right));
-                     } else {
+                     } else if (!_types.IsStruct(operandType)) {
                          return BinaryExpression(SyntaxKind.EqualsExpression, ParenthesizedExpression(left), ParenthesizedExpression(right));
+                     } else {
+                         return LiteralExpression(SyntaxKind.TrueLiteralExpression); // Fallback for structs
                      }
                  }
                  else
@@ -153,40 +167,193 @@ namespace H5.Fuzzer.Generator
              return GenerateLiteral(targetType);
         }
 
-        private ExpressionSyntax GenerateMethodCall(TypeSyntax targetType, Scope scope, int depth, bool isAsync)
+        private bool CanCallMethod(TypeSyntax targetType, Scope scope)
         {
-            var candidates = _methods.Where(m => AreTypesEquivalent(m.ReturnType, targetType)).ToList();
-            if (candidates.Count == 0) return GenerateLiteral(targetType);
+            // We need to find a method that returns targetType
+            // It can be a static method on any type
+            // Or an instance method on a variable in scope
 
-            var method = candidates[_random.Next(candidates.Count)];
-            var args = new List<ArgumentSyntax>();
-            
-            foreach (var param in method.ParameterList.Parameters)
+            // Check static methods
+            foreach(var t in _types.AllTypes)
             {
-                args.Add(Argument(GenerateExpression(param.Type, scope, depth + 1, false, isAsync)));
+                 foreach(var m in t.Methods.Where(m => m.IsStatic && AreTypesEquivalent(m.ReturnType, targetType))) return true;
             }
 
-            return InvocationExpression(IdentifierName(method.Identifier))
-                .WithArgumentList(ArgumentList(SeparatedList(args)));
+            // Check instance methods
+            foreach(var v in scope.GetVariables())
+            {
+                 var t = _types.GetTypeDefinition(v.Type);
+                 if (t != null)
+                 {
+                      foreach(var m in t.Methods.Where(m => !m.IsStatic && AreTypesEquivalent(m.ReturnType, targetType))) return true;
+
+                      // Also properties
+                      foreach(var p in t.Properties.Where(p => !p.IsStatic && AreTypesEquivalent(p.Type, targetType))) return true;
+                 }
+            }
+
+            return false;
+        }
+
+        private ExpressionSyntax GenerateMethodCall(TypeSyntax targetType, Scope scope, int depth, bool isAsync)
+        {
+            // Gather candidates
+            var candidates = new List<(ExpressionSyntax Target, string Name, List<ParameterSyntax> Params)>();
+
+            // Static methods
+            foreach(var t in _types.AllTypes)
+            {
+                foreach(var m in t.Methods.Where(m => m.IsStatic && AreTypesEquivalent(m.ReturnType, targetType)))
+                {
+                    candidates.Add((_types.CreateTypeSyntax(t), m.Name, m.Parameters));
+                }
+                // Static properties
+                foreach(var p in t.Properties.Where(p => p.IsStatic && AreTypesEquivalent(p.Type, targetType)))
+                {
+                    candidates.Add((_types.CreateTypeSyntax(t), p.Name, null)); // null params means property
+                }
+            }
+
+            // Instance methods/props
+            foreach(var v in scope.GetVariables())
+            {
+                var t = _types.GetTypeDefinition(v.Type);
+                if (t != null)
+                {
+                     // Recursively get members including base types?
+                     // Currently TypeDefinition doesn't flatten members.
+                     // But we can check methods on t directly. Inheritance support would need traversal.
+                     // For simplicity, just check direct members for now.
+
+                     foreach(var m in t.Methods.Where(m => !m.IsStatic && AreTypesEquivalent(m.ReturnType, targetType)))
+                     {
+                         candidates.Add((IdentifierName(v.Name), m.Name, m.Parameters));
+                     }
+                     foreach(var p in t.Properties.Where(p => !p.IsStatic && AreTypesEquivalent(p.Type, targetType)))
+                     {
+                         candidates.Add((IdentifierName(v.Name), p.Name, null));
+                     }
+                }
+            }
+
+            if (candidates.Count == 0) return GenerateLiteral(targetType);
+
+            var candidate = candidates[_random.Next(candidates.Count)];
+            
+            if (candidate.Params == null) // Property
+            {
+                return MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, candidate.Target, IdentifierName(candidate.Name));
+            }
+            else // Method
+            {
+                var args = new List<ArgumentSyntax>();
+                foreach (var param in candidate.Params)
+                {
+                    args.Add(Argument(GenerateExpression(param.Type, scope, depth + 1, false, isAsync)));
+                }
+
+                return InvocationExpression(
+                    MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, candidate.Target, IdentifierName(candidate.Name)))
+                    .WithArgumentList(ArgumentList(SeparatedList(args)));
+            }
+        }
+
+        private bool CanInstantiate(TypeSyntax type)
+        {
+            var t = _types.GetTypeDefinition(type);
+            return t != null && t.Kind != TypeKind.Interface && !t.IsAbstract;
+        }
+
+        private ExpressionSyntax GenerateObjectCreation(TypeSyntax targetType, Scope scope, int depth, bool isAsync)
+        {
+            var t = _types.GetTypeDefinition(targetType);
+            if (t == null) return GenerateLiteral(targetType);
+
+            // Build substitution map if generic
+            var typeMap = new Dictionary<string, TypeSyntax>();
+            if (t.IsGeneric && targetType is GenericNameSyntax gen)
+            {
+                for (int i = 0; i < Math.Min(t.GenericParameters.Count, gen.TypeArgumentList.Arguments.Count); i++)
+                {
+                    typeMap[t.GenericParameters[i]] = gen.TypeArgumentList.Arguments[i];
+                }
+            }
+
+            // Object initializer
+            var initializers = new List<ExpressionSyntax>();
+
+            // Pick some properties to initialize
+            var writableProps = t.Properties.Where(p => !p.IsStatic && p.HasSetter).ToList();
+            if (writableProps.Count > 0 && _random.NextDouble() < 0.5)
+            {
+                int count = _random.Next(1, Math.Min(3, writableProps.Count) + 1);
+                // Shuffle
+                writableProps = writableProps.OrderBy(x => _random.Next()).ToList();
+
+                for(int i=0; i<count; i++)
+                {
+                    var p = writableProps[i];
+                    var propType = SubstituteType(p.Type, typeMap);
+
+                    var val = GenerateExpression(propType, scope, depth + 1, false, isAsync);
+                    initializers.Add(
+                        AssignmentExpression(
+                            SyntaxKind.SimpleAssignmentExpression,
+                            IdentifierName(p.Name),
+                            val
+                        ));
+                }
+            }
+
+            var creation = ObjectCreationExpression(targetType).WithArgumentList(ArgumentList());
+
+            if (initializers.Count > 0)
+            {
+                creation = creation.WithInitializer(InitializerExpression(
+                    SyntaxKind.ObjectInitializerExpression,
+                    SeparatedList(initializers)));
+            }
+
+            return creation;
         }
 
         private ExpressionSyntax GenerateAwaitExpression(TypeSyntax targetType, Scope scope, int depth, bool isAsync)
         {
-            // We need an expression of type Task<targetType> or Task if targetType is void (but here targetType is usually variable type)
-            // If targetType is valid type T, we need Task<T>.
-
+            // We need a Task<targetType>
             var taskType = GenericName(Identifier("Task"))
                 .WithTypeArgumentList(TypeArgumentList(SingletonSeparatedList(targetType)));
 
-            // Recursively generate an expression of that task type
             var taskExpr = GenerateExpression(taskType, scope, depth + 1, false, isAsync);
-
             return AwaitExpression(taskExpr);
         }
         
         private bool AreTypesEquivalent(TypeSyntax t1, TypeSyntax t2)
         {
              return SyntaxFactory.AreEquivalent(t1, t2);
+        }
+
+        private TypeSyntax SubstituteType(TypeSyntax type, Dictionary<string, TypeSyntax> map)
+        {
+            if (map == null || map.Count == 0) return type;
+
+            if (type is IdentifierNameSyntax id && map.ContainsKey(id.Identifier.Text))
+            {
+                return map[id.Identifier.Text];
+            }
+
+            if (type is GenericNameSyntax gen)
+            {
+                 // Substitute arguments
+                 var newArgs = new List<TypeSyntax>();
+                 foreach(var arg in gen.TypeArgumentList.Arguments)
+                 {
+                     newArgs.Add(SubstituteType(arg, map));
+                 }
+                 return gen.WithTypeArgumentList(TypeArgumentList(SeparatedList(newArgs)));
+            }
+
+            // Array types, etc? For now handle simple cases.
+            return type;
         }
     }
 }

@@ -12,16 +12,14 @@ namespace H5.Fuzzer.Generator
     {
         private readonly Random _random;
         private readonly TypeManager _types;
-        private readonly List<MethodDeclarationSyntax> _methods;
         private readonly ExpressionGenerator _expressions;
         private int _variableCounter = 0;
 
-        public StatementGenerator(Random random, TypeManager types, List<MethodDeclarationSyntax> methods)
+        public StatementGenerator(Random random, TypeManager types, List<MethodDeclarationSyntax> methodsIgnored)
         {
             _random = random;
             _types = types;
-            _methods = methods;
-            _expressions = new ExpressionGenerator(random, types, methods);
+            _expressions = new ExpressionGenerator(random, types);
         }
 
         public List<StatementSyntax> GenerateStatements(int count, int depth, TypeSyntax returnType = null, Scope parentScope = null, bool isAsync = false)
@@ -61,6 +59,9 @@ namespace H5.Fuzzer.Generator
 
             if (returnType != null && !AreTypesEquivalent(returnType, PredefinedType(Token(SyntaxKind.VoidKeyword))))
             {
+                // If returnType is Task<T> but we are in async method, we should return T.
+                // The caller handles unwrapping. passed 'returnType' here is usually the T.
+                // But wait, MethodGenerator passes unwrapped type.
                 statements.Add(ReturnStatement(_expressions.GenerateExpression(returnType, scope, depth, false, isAsync)));
             }
             else if (returnType != null && AreTypesEquivalent(returnType, PredefinedType(Token(SyntaxKind.VoidKeyword))) && _random.NextDouble() < 0.2)
@@ -91,6 +92,9 @@ namespace H5.Fuzzer.Generator
             var variable = scope.GetRandomVariable(_random);
             if (variable == null) return null; // No variables to assign
 
+            // Skip assigning to 'this'
+            if (variable.Name == "this") return null;
+
             var expression = _expressions.GenerateExpression(variable.Type, scope, 0, false, isAsync);
             
             return ExpressionStatement(
@@ -113,7 +117,15 @@ namespace H5.Fuzzer.Generator
                 var variable = scope.GetRandomVariable(_random);
                 if (variable != null)
                 {
-                    expr = IdentifierName(variable.Name);
+                    // Only print primitives or strings to avoid clutter or complex ToString
+                    if (_types.IsNumeric(variable.Type) || _types.IsString(variable.Type) || _types.IsBool(variable.Type))
+                    {
+                        expr = IdentifierName(variable.Name);
+                    }
+                    else
+                    {
+                        expr = LiteralExpression(SyntaxKind.StringLiteralExpression, Literal("TraceObj"));
+                    }
                 }
                 else
                 {
@@ -132,14 +144,14 @@ namespace H5.Fuzzer.Generator
 
         private StatementSyntax GenerateIf(int depth, Scope parentScope, TypeSyntax returnType, bool isAsync)
         {
-            var condition = _expressions.GenerateExpression(_types.GetRandomType(), parentScope, 0, true, isAsync);
+            var condition = _expressions.GenerateExpression(PredefinedType(Token(SyntaxKind.BoolKeyword)), parentScope, 0, true, isAsync);
             
-            var ifBody = Block(GenerateStatements(_random.Next(1, 4), depth, returnType: null, parentScope: parentScope, isAsync: isAsync));
+            var ifBody = Block(GenerateStatements(_random.Next(1, 4), depth, returnType, parentScope, isAsync));
             
             ElseClauseSyntax elseClause = null;
             if (_random.NextDouble() < 0.5)
             {
-                var elseBody = Block(GenerateStatements(_random.Next(1, 4), depth, returnType: null, parentScope: parentScope, isAsync: isAsync));
+                var elseBody = Block(GenerateStatements(_random.Next(1, 4), depth, returnType, parentScope, isAsync));
                 elseClause = ElseClause(elseBody);
             }
 
@@ -149,7 +161,7 @@ namespace H5.Fuzzer.Generator
         private StatementSyntax GenerateWhile(int depth, Scope scope, TypeSyntax returnType, bool isAsync)
         {
             var loopVar = $"i{_variableCounter++}";
-            var limit = _random.Next(2, 10);
+            var limit = _random.Next(2, 5); // Reduce loop count to be safe
             
             var declaration = VariableDeclaration(PredefinedType(Token(SyntaxKind.IntKeyword)))
                 .WithVariables(SingletonSeparatedList(
@@ -164,18 +176,10 @@ namespace H5.Fuzzer.Generator
             var incrementors = SingletonSeparatedList<ExpressionSyntax>(
                 PostfixUnaryExpression(SyntaxKind.PostIncrementExpression, IdentifierName(loopVar)));
 
-            // For loop creates its own scope for loop variable, but body scope should be child of that
-            // But here we just pass parent scope to body generator, which isn't strictly correct as 'loopVar' is in scope.
-            // But Scope class handles this by being passed down.
-            // Wait, GenerateStatements creates NEW scope from parent.
-            // So if I want loopVar to be available, I should add it to 'scope' before calling GenerateStatements.
-            // But 'scope' here is the PARENT scope of the loop.
-            // So I should create a loopScope.
-
             var loopScope = new Scope(scope);
             loopScope.AddVariable(loopVar, PredefinedType(Token(SyntaxKind.IntKeyword)));
 
-            var body = Block(GenerateStatements(_random.Next(1, 4), depth, returnType: null, parentScope: loopScope, isAsync: isAsync));
+            var body = Block(GenerateStatements(_random.Next(1, 4), depth, returnType, loopScope, isAsync));
 
             return ForStatement(declaration, SeparatedList<ExpressionSyntax>(), condition, incrementors, body);
         }
@@ -217,15 +221,12 @@ namespace H5.Fuzzer.Generator
             }
             else
             {
-                switchType = _types.GetRandomType();
-                if (!_types.IsNumeric(switchType) && !_types.IsString(switchType))
-                    switchType = PredefinedType(Token(SyntaxKind.IntKeyword));
-
+                switchType = PredefinedType(Token(SyntaxKind.IntKeyword));
                 switchExpr = _expressions.GenerateExpression(switchType, scope, 0, false, isAsync);
             }
 
             var sections = new List<SwitchSectionSyntax>();
-            int cases = _random.Next(2, 5);
+            int cases = _random.Next(2, 4);
             var usedLabels = new HashSet<object>();
 
             for (int i = 0; i < cases; i++)
@@ -267,26 +268,28 @@ namespace H5.Fuzzer.Generator
 
         private StatementSyntax GenerateAwaitStatement(Scope scope, bool isAsync)
         {
-             // Force generate await
-             var targetType = _types.GetRandomType(); // Doesn't matter, we discard
-             // Actually, usually await void methods or Tasks.
+             // Fix: Use Task.Yield() instead of Task.Delay(time) to avoid timing issues.
+             // Or await Task.CompletedTask
 
-             // Expression generator can generate await expression.
-             // We can just ask for it.
-             // But we need to ensure it generates an await expression.
-             // We'll create one manually to be safe.
-
-             var delay = _random.Next(10, 100);
-             var awaitExpr = AwaitExpression(
-                 InvocationExpression(
-                     MemberAccessExpression(
-                         SyntaxKind.SimpleMemberAccessExpression,
-                         IdentifierName("Task"),
-                         IdentifierName("Delay")))
-                 .WithArgumentList(ArgumentList(SingletonSeparatedList(Argument(
-                     LiteralExpression(SyntaxKind.NumericLiteralExpression, Literal(delay)))))));
-
-             return ExpressionStatement(awaitExpr);
+             if (_random.NextDouble() < 0.5)
+             {
+                 var awaitYield = AwaitExpression(
+                     InvocationExpression(
+                         MemberAccessExpression(
+                             SyntaxKind.SimpleMemberAccessExpression,
+                             IdentifierName("Task"),
+                             IdentifierName("Yield"))));
+                 return ExpressionStatement(awaitYield);
+             }
+             else
+             {
+                  var awaitCompleted = AwaitExpression(
+                      MemberAccessExpression(
+                             SyntaxKind.SimpleMemberAccessExpression,
+                             IdentifierName("Task"),
+                             IdentifierName("CompletedTask")));
+                  return ExpressionStatement(awaitCompleted);
+             }
         }
         
         private bool AreTypesEquivalent(TypeSyntax t1, TypeSyntax t2)
