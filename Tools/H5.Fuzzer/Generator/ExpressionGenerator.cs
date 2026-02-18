@@ -83,9 +83,18 @@ namespace H5.Fuzzer.Generator
             if (_types.IsTask(targetType))
             {
                  // Return completed task
+                TypeSyntax inner = null;
                 if (targetType is GenericNameSyntax gen)
                 {
-                    var inner = gen.TypeArgumentList.Arguments[0];
+                    inner = gen.TypeArgumentList.Arguments[0];
+                }
+                else if (targetType is QualifiedNameSyntax q && q.Right is GenericNameSyntax genRight)
+                {
+                    inner = genRight.TypeArgumentList.Arguments[0];
+                }
+
+                if (inner != null)
+                {
                     return InvocationExpression(
                         MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, ParseTypeName("System.Threading.Tasks.Task"), IdentifierName("FromResult")))
                         .WithArgumentList(ArgumentList(SingletonSeparatedList(Argument(GenerateLiteral(inner)))));

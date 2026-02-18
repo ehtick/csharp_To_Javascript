@@ -385,6 +385,7 @@ namespace H5.Fuzzer.Generator
         {
             if (type is IdentifierNameSyntax id && id.Identifier.Text == "Task") return true;
             if (type is GenericNameSyntax gen && gen.Identifier.Text == "Task") return true;
+            if (type is QualifiedNameSyntax q) return IsTask(q.Right);
             return false;
         }
 
@@ -397,6 +398,10 @@ namespace H5.Fuzzer.Generator
             if (type is IdentifierNameSyntax id && id.Identifier.Text == "Task")
             {
                 return PredefinedType(Token(SyntaxKind.VoidKeyword));
+            }
+            if (type is QualifiedNameSyntax q)
+            {
+                return GetUnwrappedTaskType(q.Right);
             }
             return type;
         }
