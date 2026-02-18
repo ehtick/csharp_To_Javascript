@@ -87,12 +87,12 @@ namespace H5.Fuzzer.Generator
                 {
                     var inner = gen.TypeArgumentList.Arguments[0];
                     return InvocationExpression(
-                        MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, IdentifierName("Task"), IdentifierName("FromResult")))
+                        MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, ParseTypeName("System.Threading.Tasks.Task"), IdentifierName("FromResult")))
                         .WithArgumentList(ArgumentList(SingletonSeparatedList(Argument(GenerateLiteral(inner)))));
                 }
                 else
                 {
-                    return MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, IdentifierName("Task"), IdentifierName("CompletedTask"));
+                    return MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, ParseTypeName("System.Threading.Tasks.Task"), IdentifierName("CompletedTask"));
                 }
             }
 
