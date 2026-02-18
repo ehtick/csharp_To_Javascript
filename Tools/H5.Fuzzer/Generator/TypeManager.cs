@@ -146,8 +146,15 @@ namespace H5.Fuzzer.Generator
             var existingMethods = new Dictionary<string, MethodDefinition>();
             var existingProps = new Dictionary<string, PropertyDefinition>();
 
+            // Collect all interfaces including inherited ones
+            var allInterfaces = new HashSet<TypeDefinition>();
+            foreach(var iface in typeDef.Interfaces)
+            {
+                CollectInterfacesRecursive(iface, allInterfaces);
+            }
+
             // First, implement interface members
-            foreach (var iface in typeDef.Interfaces)
+            foreach (var iface in allInterfaces)
             {
                 foreach (var method in iface.Methods)
                 {
@@ -156,9 +163,14 @@ namespace H5.Fuzzer.Generator
                     {
                         // Check compatibility
                         var existing = existingMethods[method.Name];
-                        if (!AreTypesEquivalent(existing.ReturnType, method.ReturnType)) // Simplified check, parameters too?
+                        if (!AreTypesEquivalent(existing.ReturnType, method.ReturnType))
                         {
                             isExplicit = true;
+                        }
+                        else
+                        {
+                            // Already implemented implicitly matching signature, skip adding duplicate
+                            continue;
                         }
                     }
 
@@ -192,6 +204,11 @@ namespace H5.Fuzzer.Generator
                         if (!AreTypesEquivalent(existing.Type, prop.Type))
                         {
                             isExplicit = true;
+                        }
+                        else
+                        {
+                            // Already implemented implicitly matching signature, skip adding duplicate
+                            continue;
                         }
                     }
 
@@ -297,6 +314,16 @@ namespace H5.Fuzzer.Generator
 
                     typeDef.Methods.Add(method);
                 }
+            }
+        }
+
+        private void CollectInterfacesRecursive(TypeDefinition iface, HashSet<TypeDefinition> collected)
+        {
+            if (collected.Contains(iface)) return;
+            collected.Add(iface);
+            foreach(var baseIface in iface.Interfaces)
+            {
+                CollectInterfacesRecursive(baseIface, collected);
             }
         }
 

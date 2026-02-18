@@ -39,7 +39,10 @@ namespace H5.Fuzzer.Generator
             if (methodDef.IsAbstract) modifiers = modifiers.Add(Token(SyntaxKind.AbstractKeyword));
             if (methodDef.IsVirtual) modifiers = modifiers.Add(Token(SyntaxKind.VirtualKeyword));
             if (methodDef.IsOverride) modifiers = modifiers.Add(Token(SyntaxKind.OverrideKeyword));
-            if (methodDef.IsAsync) modifiers = modifiers.Add(Token(SyntaxKind.AsyncKeyword));
+
+            // Only add async if we are generating a body
+            bool hasBody = !methodDef.IsAbstract && enclosingType.Kind != TypeKind.Interface;
+            if (methodDef.IsAsync && hasBody) modifiers = modifiers.Add(Token(SyntaxKind.AsyncKeyword));
 
             // Parameters
             // Note: We need to ensure parameter types are valid. MethodDefinition already has them.
