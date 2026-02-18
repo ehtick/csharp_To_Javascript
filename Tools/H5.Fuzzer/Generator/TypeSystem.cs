@@ -72,6 +72,7 @@ namespace H5.Fuzzer.Generator
         public bool IsVirtual { get; set; }
         public bool IsOverride { get; set; }
         public bool IsAsync { get; set; }
+        public TypeSyntax ExplicitInterface { get; set; }
 
         // Helper to get ParameterList syntax
         public ParameterListSyntax GetParameterList()
@@ -86,5 +87,6 @@ namespace H5.Fuzzer.Generator
         public TypeSyntax Type { get; set; }
         public bool IsStatic { get; set; }
         public bool HasSetter { get; set; }
+        public TypeSyntax ExplicitInterface { get; set; }
     }
 }

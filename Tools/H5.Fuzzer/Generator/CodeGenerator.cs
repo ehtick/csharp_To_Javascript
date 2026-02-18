@@ -154,7 +154,12 @@ namespace H5.Fuzzer.Generator
             {
                 var propDecl = PropertyDeclaration(prop.Type, prop.Name);
 
-                if (typeDef.Kind != TypeKind.Interface)
+                if (prop.ExplicitInterface != null)
+                {
+                    propDecl = propDecl.WithExplicitInterfaceSpecifier(ExplicitInterfaceSpecifier((NameSyntax)prop.ExplicitInterface));
+                    // No public modifier for explicit implementation
+                }
+                else if (typeDef.Kind != TypeKind.Interface)
                 {
                     propDecl = propDecl.WithModifiers(TokenList(Token(SyntaxKind.PublicKeyword)));
                 }

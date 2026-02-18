@@ -30,7 +30,7 @@ namespace H5.Fuzzer.Generator
 
             // Build modifiers
             var modifiers = TokenList();
-            if (enclosingType.Kind != TypeKind.Interface)
+            if (methodDef.ExplicitInterface == null && enclosingType.Kind != TypeKind.Interface)
             {
                 modifiers = modifiers.Add(Token(SyntaxKind.PublicKeyword));
             }
@@ -76,6 +76,11 @@ namespace H5.Fuzzer.Generator
             var methodDecl = MethodDeclaration(returnType, methodDef.Name)
                 .WithModifiers(modifiers)
                 .WithParameterList(methodDef.GetParameterList());
+
+            if (methodDef.ExplicitInterface != null)
+            {
+                methodDecl = methodDecl.WithExplicitInterfaceSpecifier(ExplicitInterfaceSpecifier((NameSyntax)methodDef.ExplicitInterface));
+            }
 
             if (body != null)
             {

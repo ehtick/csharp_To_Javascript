@@ -225,11 +225,11 @@ namespace H5.Fuzzer.Generator
                      // But we can check methods on t directly. Inheritance support would need traversal.
                      // For simplicity, just check direct members for now.
 
-                     foreach(var m in t.Methods.Where(m => !m.IsStatic && AreTypesEquivalent(m.ReturnType, targetType)))
+                     foreach(var m in t.Methods.Where(m => !m.IsStatic && m.ExplicitInterface == null && AreTypesEquivalent(m.ReturnType, targetType)))
                      {
                          candidates.Add((IdentifierName(v.Name), m.Name, m.Parameters));
                      }
-                     foreach(var p in t.Properties.Where(p => !p.IsStatic && AreTypesEquivalent(p.Type, targetType)))
+                     foreach(var p in t.Properties.Where(p => !p.IsStatic && p.ExplicitInterface == null && AreTypesEquivalent(p.Type, targetType)))
                      {
                          candidates.Add((IdentifierName(v.Name), p.Name, null));
                      }
@@ -293,7 +293,7 @@ namespace H5.Fuzzer.Generator
                 for(int i=0; i<count; i++)
                 {
                     var p = writableProps[i];
-                    var propType = SubstituteType(p.Type, typeMap);
+                    var propType = _types.SubstituteType(p.Type, typeMap);
 
                     var val = GenerateExpression(propType, scope, depth + 1, false, isAsync);
                     initializers.Add(
@@ -330,30 +330,6 @@ namespace H5.Fuzzer.Generator
         private bool AreTypesEquivalent(TypeSyntax t1, TypeSyntax t2)
         {
              return SyntaxFactory.AreEquivalent(t1, t2);
-        }
-
-        private TypeSyntax SubstituteType(TypeSyntax type, Dictionary<string, TypeSyntax> map)
-        {
-            if (map == null || map.Count == 0) return type;
-
-            if (type is IdentifierNameSyntax id && map.ContainsKey(id.Identifier.Text))
-            {
-                return map[id.Identifier.Text];
-            }
-
-            if (type is GenericNameSyntax gen)
-            {
-                 // Substitute arguments
-                 var newArgs = new List<TypeSyntax>();
-                 foreach(var arg in gen.TypeArgumentList.Arguments)
-                 {
-                     newArgs.Add(SubstituteType(arg, map));
-                 }
-                 return gen.WithTypeArgumentList(TypeArgumentList(SeparatedList(newArgs)));
-            }
-
-            // Array types, etc? For now handle simple cases.
-            return type;
         }
     }
 }

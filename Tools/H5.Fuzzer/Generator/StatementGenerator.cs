@@ -268,28 +268,15 @@ namespace H5.Fuzzer.Generator
 
         private StatementSyntax GenerateAwaitStatement(Scope scope, bool isAsync)
         {
-             // Fix: Use Task.Yield() instead of Task.Delay(time) to avoid timing issues.
-             // Or await Task.CompletedTask
+             // Fix: Use Task.CompletedTask or Task.Run to avoid timing issues.
+             // Task.Yield() causes issues in some environments.
 
-             if (_random.NextDouble() < 0.5)
-             {
-                 var awaitYield = AwaitExpression(
-                     InvocationExpression(
-                         MemberAccessExpression(
-                             SyntaxKind.SimpleMemberAccessExpression,
-                             ParseTypeName("System.Threading.Tasks.Task"),
-                             IdentifierName("Yield"))));
-                 return ExpressionStatement(awaitYield);
-             }
-             else
-             {
                   var awaitCompleted = AwaitExpression(
                       MemberAccessExpression(
                              SyntaxKind.SimpleMemberAccessExpression,
                              ParseTypeName("System.Threading.Tasks.Task"),
                              IdentifierName("CompletedTask")));
                   return ExpressionStatement(awaitCompleted);
-             }
         }
         
         private bool AreTypesEquivalent(TypeSyntax t1, TypeSyntax t2)

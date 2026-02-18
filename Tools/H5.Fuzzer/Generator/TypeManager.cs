@@ -30,8 +30,8 @@ namespace H5.Fuzzer.Generator
                     Kind = (TypeKind)_random.Next(3) // 0=Class, 1=Interface, 2=Struct
                 };
 
-                // Generics
-                if (_random.NextDouble() < 0.3)
+                // Generics (Only for Classes/Structs to simplify interface implementation stability)
+                if (typeDef.Kind != TypeKind.Interface && _random.NextDouble() < 0.3)
                 {
                     typeDef.IsGeneric = true;
                     int paramCount = _random.Next(1, 3);
@@ -44,13 +44,7 @@ namespace H5.Fuzzer.Generator
                 AllTypes.Add(typeDef);
             }
 
-            // Pass 2: Populate details
-            for (int i = 0; i < AllTypes.Count; i++)
-            {
-                PopulateType(AllTypes[i], i);
-            }
-
-            // Pass 3: Nesting
+            // Pass 2: Nesting
             int nestCount = AllTypes.Count / 5;
             for (int i = 0; i < nestCount; i++)
             {
@@ -60,21 +54,20 @@ namespace H5.Fuzzer.Generator
                 // Find a parent
                 var parent = AllTypes[_random.Next(AllTypes.Count)];
                 if (parent == child) continue;
-                if (parent.Kind == TypeKind.Interface) continue; // Interfaces can't have nested types in C# < 8? Actually they can in recent C# but maybe H5 limits it?
-                // Let's avoid nesting in interfaces for now.
+                if (parent.Kind == TypeKind.Interface) continue;
+                // Do not nest in Generic types to avoid complex instantiation logic/mismatches
+                if (parent.IsGeneric) continue;
 
-                // Avoid cycles: parent should not be child
-                // Avoid deep nesting: parent should not be nested (depth 1)
-                if (parent.ParentType != null) continue;
-
-                // Also check inheritance cycles?
-                // If Parent inherits from Child, we can't nest Child in Parent?
-                // Actually C# allows: class P : C { class C {} } -> Error: 'P' introduces 'C' which is already defined... wait.
-                // class P : C {} class C { class Nested {} } -> Fine.
-                // class P { class C : P {} } -> Fine.
+                if (parent.ParentType != null) continue; // Max depth 1
 
                 child.ParentType = parent;
                 parent.NestedTypes.Add(child);
+            }
+
+            // Pass 3: Populate details
+            for (int i = 0; i < AllTypes.Count; i++)
+            {
+                PopulateType(AllTypes[i], i);
             }
         }
 
@@ -123,7 +116,6 @@ namespace H5.Fuzzer.Generator
             else // Struct
             {
                 // Structs implement interfaces
-                // Filter interfaces that would cause cycles (i.e. interface has property of this struct type or later struct type)
                 var possibleInterfaces = AllTypes.Where(t => t.Kind == TypeKind.Interface && !t.IsGeneric).ToList();
 
                 possibleInterfaces = possibleInterfaces.Where(iface => {
@@ -131,7 +123,6 @@ namespace H5.Fuzzer.Generator
                         var pDef = GetTypeDefinition(p.Type);
                         if (pDef != null && pDef.Kind == TypeKind.Struct)
                         {
-                            // If property is struct, it must be defined BEFORE current struct
                             return AllTypes.IndexOf(pDef) >= index;
                         }
                         return false;
@@ -152,12 +143,25 @@ namespace H5.Fuzzer.Generator
         private void GenerateMembers(TypeDefinition typeDef, int index)
         {
             var usedNames = new HashSet<string>();
+            var existingMethods = new Dictionary<string, MethodDefinition>();
+            var existingProps = new Dictionary<string, PropertyDefinition>();
 
             // First, implement interface members
             foreach (var iface in typeDef.Interfaces)
             {
                 foreach (var method in iface.Methods)
                 {
+                    bool isExplicit = false;
+                    if (existingMethods.ContainsKey(method.Name))
+                    {
+                        // Check compatibility
+                        var existing = existingMethods[method.Name];
+                        if (!AreTypesEquivalent(existing.ReturnType, method.ReturnType)) // Simplified check, parameters too?
+                        {
+                            isExplicit = true;
+                        }
+                    }
+
                     // Copy method signature
                     var impl = new MethodDefinition
                     {
@@ -168,23 +172,43 @@ namespace H5.Fuzzer.Generator
                         IsAbstract = false,
                         IsVirtual = false,
                         IsOverride = false,
-                        IsAsync = method.IsAsync // Should match? Interface methods usually sync in this generator
+                        IsAsync = method.IsAsync,
+                        ExplicitInterface = isExplicit ? CreateTypeSyntax(iface) : null
                     };
                     typeDef.Methods.Add(impl);
-                    usedNames.Add(impl.Name);
+                    if (!isExplicit)
+                    {
+                        usedNames.Add(impl.Name);
+                        existingMethods[impl.Name] = impl;
+                    }
                 }
 
                 foreach (var prop in iface.Properties)
                 {
+                    bool isExplicit = false;
+                    if (existingProps.ContainsKey(prop.Name))
+                    {
+                        var existing = existingProps[prop.Name];
+                        if (!AreTypesEquivalent(existing.Type, prop.Type))
+                        {
+                            isExplicit = true;
+                        }
+                    }
+
                     var impl = new PropertyDefinition
                     {
                         Name = prop.Name,
                         Type = CloneType(prop.Type),
                         IsStatic = false,
-                        HasSetter = prop.HasSetter
+                        HasSetter = prop.HasSetter,
+                        ExplicitInterface = isExplicit ? CreateTypeSyntax(iface) : null
                     };
                     typeDef.Properties.Add(impl);
-                    usedNames.Add(impl.Name);
+                    if (!isExplicit)
+                    {
+                        usedNames.Add(impl.Name);
+                        existingProps[impl.Name] = impl;
+                    }
                 }
             }
 
@@ -211,7 +235,6 @@ namespace H5.Fuzzer.Generator
                         var pDef = GetTypeDefinition(type);
                         if (pDef != null && pDef.Kind == TypeKind.Struct && AllTypes.IndexOf(pDef) >= index)
                         {
-                            // Cycle risk, pick safe type (primitive)
                             type = PredefinedType(Token(SyntaxKind.IntKeyword));
                         }
                     }
@@ -239,11 +262,11 @@ namespace H5.Fuzzer.Generator
                     {
                          if (AreTypesEquivalent(method.ReturnType, PredefinedType(Token(SyntaxKind.VoidKeyword))))
                          {
-                             method.ReturnType = IdentifierName("Task");
+                             method.ReturnType = ParseTypeName("System.Threading.Tasks.Task");
                          }
                          else if (!IsTask(method.ReturnType))
                          {
-                             method.ReturnType = GenericName(Identifier("Task"))
+                             method.ReturnType = GenericName(Identifier("System.Threading.Tasks.Task"))
                                  .WithTypeArgumentList(TypeArgumentList(SingletonSeparatedList(method.ReturnType)));
                          }
                     }
@@ -281,7 +304,6 @@ namespace H5.Fuzzer.Generator
         {
             if (allowVoid && _random.NextDouble() < 0.1) return PredefinedType(Token(SyntaxKind.VoidKeyword));
 
-            // 50% chance to return a primitive, 50% chance to return a generated type (if any)
             if (AllTypes.Count > 0 && _random.NextDouble() < 0.5)
             {
                 var typeDef = AllTypes[_random.Next(AllTypes.Count)];
@@ -293,7 +315,6 @@ namespace H5.Fuzzer.Generator
 
         public TypeSyntax CreateTypeSyntax(TypeDefinition typeDef)
         {
-             // 1. Generate local type syntax (Identifier or Generic)
              SimpleNameSyntax local;
              if (typeDef.IsGeneric)
              {
@@ -306,12 +327,9 @@ namespace H5.Fuzzer.Generator
                  local = IdentifierName(typeDef.Name);
              }
 
-             // 2. Qualify if nested
              if (typeDef.ParentType != null)
              {
                  var parentSyntax = CreateTypeSyntax(typeDef.ParentType);
-                 // parentSyntax might be IdentifierName or GenericName or QualifiedName (if deeply nested)
-                 // We need to append local.
                  return QualifiedName((NameSyntax)parentSyntax, local);
              }
 
@@ -332,7 +350,6 @@ namespace H5.Fuzzer.Generator
 
         public TypeSyntax GetRandomTaskType()
         {
-            // Either Task or Task<T>
             if (_random.NextDouble() < 0.3) return ParseTypeName("System.Threading.Tasks.Task");
             return GenericName(Identifier("System.Threading.Tasks.Task")).WithTypeArgumentList(TypeArgumentList(SingletonSeparatedList(GetRandomType())));
         }
@@ -389,6 +406,7 @@ namespace H5.Fuzzer.Generator
             string name = null;
             if (type is IdentifierNameSyntax id) name = id.Identifier.Text;
             else if (type is GenericNameSyntax gen) name = gen.Identifier.Text;
+            else if (type is QualifiedNameSyntax q) return GetTypeDefinition(q.Right);
 
             if (name == null) return null;
             return AllTypes.FirstOrDefault(t => t.Name == name);
@@ -401,9 +419,7 @@ namespace H5.Fuzzer.Generator
 
         private TypeSyntax CloneType(TypeSyntax type)
         {
-            // Simple clone via parsing text - robust enough for this purpose
             if (type == null) return null;
-            // Or manual reconstruction
             if (type is IdentifierNameSyntax id) return IdentifierName(id.Identifier);
             if (type is PredefinedTypeSyntax pre) return PredefinedType(pre.Keyword);
             if (type is GenericNameSyntax gen)
@@ -415,13 +431,39 @@ namespace H5.Fuzzer.Generator
             {
                 return QualifiedName((NameSyntax)CloneType(q.Left), (SimpleNameSyntax)CloneType(q.Right));
             }
-            // Fallback
             return ParseTypeName(type.ToString());
         }
 
         private ParameterSyntax CloneParameter(ParameterSyntax p)
         {
             return Parameter(p.Identifier).WithType(CloneType(p.Type));
+        }
+
+        public TypeSyntax SubstituteType(TypeSyntax type, Dictionary<string, TypeSyntax> map)
+        {
+            if (map == null || map.Count == 0) return type;
+
+            if (type is IdentifierNameSyntax id && map.ContainsKey(id.Identifier.Text))
+            {
+                return map[id.Identifier.Text];
+            }
+
+            if (type is GenericNameSyntax gen)
+            {
+                 var newArgs = new List<TypeSyntax>();
+                 foreach(var arg in gen.TypeArgumentList.Arguments)
+                 {
+                     newArgs.Add(SubstituteType(arg, map));
+                 }
+                 return gen.WithTypeArgumentList(TypeArgumentList(SeparatedList(newArgs)));
+            }
+
+            if (type is QualifiedNameSyntax q)
+            {
+                return QualifiedName((NameSyntax)SubstituteType(q.Left, map), (SimpleNameSyntax)SubstituteType(q.Right, map));
+            }
+
+            return type;
         }
     }
 }
