@@ -26,7 +26,7 @@ namespace H5.Fuzzer.Generator
             return GenerateLiteral(targetType);
         }
 
-        public ExpressionSyntax GenerateExpression(TypeSyntax targetType, Scope scope, int depth = 0, bool forceBool = false, bool isAsync = false)
+        public ExpressionSyntax GenerateExpression(TypeSyntax targetType, Scope scope, int depth = 0, bool forceBool = false, bool isAsync = false, string currentMethodName = null)
         {
             if (forceBool) targetType = PredefinedType(Token(SyntaxKind.BoolKeyword));
 
@@ -47,10 +47,10 @@ namespace H5.Fuzzer.Generator
             {
                 case 0: return GenerateLiteral(targetType);
                 case 1: return GenerateVariable(targetType, scope);
-                case 2: return GenerateBinary(targetType, scope, depth, isAsync);
-                case 3: return GenerateMethodCall(targetType, scope, depth, isAsync);
-                case 4: return GenerateAwaitExpression(targetType, scope, depth, isAsync);
-                case 5: return GenerateObjectCreation(targetType, scope, depth, isAsync);
+                case 2: return GenerateBinary(targetType, scope, depth, isAsync, currentMethodName);
+                case 3: return GenerateMethodCall(targetType, scope, depth, isAsync, currentMethodName);
+                case 4: return GenerateAwaitExpression(targetType, scope, depth, isAsync, currentMethodName);
+                case 5: return GenerateObjectCreation(targetType, scope, depth, isAsync, currentMethodName);
                 default: return GenerateLiteral(targetType);
             }
         }
@@ -127,12 +127,12 @@ namespace H5.Fuzzer.Generator
              return GenerateLiteral(targetType);
         }
 
-        private ExpressionSyntax GenerateBinary(TypeSyntax targetType, Scope scope, int depth, bool isAsync)
+        private ExpressionSyntax GenerateBinary(TypeSyntax targetType, Scope scope, int depth, bool isAsync, string currentMethodName)
         {
              if (_types.IsNumeric(targetType))
              {
-                 var left = GenerateExpression(targetType, scope, depth + 1, false, isAsync);
-                 var right = GenerateExpression(targetType, scope, depth + 1, false, isAsync);
+                 var left = GenerateExpression(targetType, scope, depth + 1, false, isAsync, currentMethodName);
+                 var right = GenerateExpression(targetType, scope, depth + 1, false, isAsync, currentMethodName);
                  var op = _random.Next(3); // +, -, *
                  var kind = op switch
                  {
@@ -149,8 +149,8 @@ namespace H5.Fuzzer.Generator
                  {
                      var operandType = _types.GetRandomType(); 
                      
-                     var left = GenerateExpression(operandType, scope, depth + 1, false, isAsync);
-                     var right = GenerateExpression(operandType, scope, depth + 1, false, isAsync);
+                     var left = GenerateExpression(operandType, scope, depth + 1, false, isAsync, currentMethodName);
+                     var right = GenerateExpression(operandType, scope, depth + 1, false, isAsync, currentMethodName);
                      
                      if (_types.IsNumeric(operandType)) {
                          return BinaryExpression(SyntaxKind.LessThanExpression, ParenthesizedExpression(left), ParenthesizedExpression(right));
@@ -162,15 +162,15 @@ namespace H5.Fuzzer.Generator
                  }
                  else
                  {
-                     var left = GenerateExpression(targetType, scope, depth + 1, false, isAsync);
-                     var right = GenerateExpression(targetType, scope, depth + 1, false, isAsync);
+                     var left = GenerateExpression(targetType, scope, depth + 1, false, isAsync, currentMethodName);
+                     var right = GenerateExpression(targetType, scope, depth + 1, false, isAsync, currentMethodName);
                      return BinaryExpression(SyntaxKind.LogicalAndExpression, ParenthesizedExpression(left), ParenthesizedExpression(right));
                  }
              }
              else if (_types.IsString(targetType))
              {
-                 var left = GenerateExpression(targetType, scope, depth + 1, false, isAsync);
-                 var right = GenerateExpression(targetType, scope, depth + 1, false, isAsync);
+                 var left = GenerateExpression(targetType, scope, depth + 1, false, isAsync, currentMethodName);
+                 var right = GenerateExpression(targetType, scope, depth + 1, false, isAsync, currentMethodName);
                  return BinaryExpression(SyntaxKind.AddExpression, ParenthesizedExpression(left), ParenthesizedExpression(right));
              }
              return GenerateLiteral(targetType);
@@ -204,7 +204,7 @@ namespace H5.Fuzzer.Generator
             return false;
         }
 
-        private ExpressionSyntax GenerateMethodCall(TypeSyntax targetType, Scope scope, int depth, bool isAsync)
+        private ExpressionSyntax GenerateMethodCall(TypeSyntax targetType, Scope scope, int depth, bool isAsync, string currentMethodName)
         {
             // Gather candidates
             var candidates = new List<(ExpressionSyntax Target, string Name, List<ParameterSyntax> Params)>();
@@ -236,6 +236,7 @@ namespace H5.Fuzzer.Generator
 
                      foreach(var m in t.Methods.Where(m => !m.IsStatic && m.ExplicitInterface == null && AreTypesEquivalent(m.ReturnType, targetType)))
                      {
+                         if (m.Name == currentMethodName && _random.NextDouble() < 0.8) continue; // Reduce recursion probability significantly
                          candidates.Add((IdentifierName(v.Name), m.Name, m.Parameters));
                      }
                      foreach(var p in t.Properties.Where(p => !p.IsStatic && p.ExplicitInterface == null && AreTypesEquivalent(p.Type, targetType)))
@@ -258,7 +259,7 @@ namespace H5.Fuzzer.Generator
                 var args = new List<ArgumentSyntax>();
                 foreach (var param in candidate.Params)
                 {
-                    args.Add(Argument(GenerateExpression(param.Type, scope, depth + 1, false, isAsync)));
+                    args.Add(Argument(GenerateExpression(param.Type, scope, depth + 1, false, isAsync, currentMethodName)));
                 }
 
                 return InvocationExpression(
@@ -273,7 +274,7 @@ namespace H5.Fuzzer.Generator
             return t != null && t.Kind != TypeKind.Interface && !t.IsAbstract;
         }
 
-        private ExpressionSyntax GenerateObjectCreation(TypeSyntax targetType, Scope scope, int depth, bool isAsync)
+        private ExpressionSyntax GenerateObjectCreation(TypeSyntax targetType, Scope scope, int depth, bool isAsync, string currentMethodName)
         {
             var t = _types.GetTypeDefinition(targetType);
             if (t == null) return GenerateLiteral(targetType);
@@ -304,7 +305,7 @@ namespace H5.Fuzzer.Generator
                     var p = writableProps[i];
                     var propType = _types.SubstituteType(p.Type, typeMap);
 
-                    var val = GenerateExpression(propType, scope, depth + 1, false, isAsync);
+                    var val = GenerateExpression(propType, scope, depth + 1, false, isAsync, currentMethodName);
                     initializers.Add(
                         AssignmentExpression(
                             SyntaxKind.SimpleAssignmentExpression,
@@ -326,13 +327,13 @@ namespace H5.Fuzzer.Generator
             return creation;
         }
 
-        private ExpressionSyntax GenerateAwaitExpression(TypeSyntax targetType, Scope scope, int depth, bool isAsync)
+        private ExpressionSyntax GenerateAwaitExpression(TypeSyntax targetType, Scope scope, int depth, bool isAsync, string currentMethodName)
         {
             // We need a Task<targetType>
             var taskType = GenericName(Identifier("Task"))
                 .WithTypeArgumentList(TypeArgumentList(SingletonSeparatedList(targetType)));
 
-            var taskExpr = GenerateExpression(taskType, scope, depth + 1, false, isAsync);
+            var taskExpr = GenerateExpression(taskType, scope, depth + 1, false, isAsync, currentMethodName);
             return AwaitExpression(taskExpr);
         }
         

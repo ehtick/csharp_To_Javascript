@@ -36,7 +36,7 @@ namespace H5.Fuzzer.Generator
             }
 
             if (methodDef.IsStatic) modifiers = modifiers.Add(Token(SyntaxKind.StaticKeyword));
-            if (methodDef.IsAbstract) modifiers = modifiers.Add(Token(SyntaxKind.AbstractKeyword));
+            if (methodDef.IsAbstract && enclosingType.Kind != TypeKind.Interface) modifiers = modifiers.Add(Token(SyntaxKind.AbstractKeyword));
             if (methodDef.IsVirtual) modifiers = modifiers.Add(Token(SyntaxKind.VirtualKeyword));
             if (methodDef.IsOverride) modifiers = modifiers.Add(Token(SyntaxKind.OverrideKeyword));
 
@@ -64,7 +64,7 @@ namespace H5.Fuzzer.Generator
                 // Add 'this' if instance method
                 if (!methodDef.IsStatic)
                 {
-                    initialScope.AddVariable("this", _types.CreateTypeSyntax(enclosingType));
+                    initialScope.AddVariable("this", _types.CreateTypeSyntax(enclosingType, useGenericParams: true));
                 }
 
                 var bodyReturnType = returnType;
@@ -73,7 +73,7 @@ namespace H5.Fuzzer.Generator
                     bodyReturnType = _types.GetUnwrappedTaskType(returnType);
                 }
 
-                body = Block(_statements.GenerateStatements(5, 0, bodyReturnType, initialScope, methodDef.IsAsync));
+                body = Block(_statements.GenerateStatements(5, 0, bodyReturnType, initialScope, methodDef.IsAsync, methodDef.Name));
             }
 
             var methodDecl = MethodDeclaration(returnType, methodDef.Name)

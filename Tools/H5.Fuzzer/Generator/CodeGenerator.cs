@@ -201,7 +201,7 @@ namespace H5.Fuzzer.Generator
             // Create a scope for main
             var mainScope = new Scope(null);
 
-            statements.AddRange(mainStatementGen.GenerateStatements(10, 0, returnType: null, parentScope: mainScope, isAsync: true));
+            statements.AddRange(mainStatementGen.GenerateStatements(10, 0, returnType: null, parentScope: mainScope, isAsync: true, currentMethodName: "Main"));
 
             statements.Add(ParseStatement("Console.WriteLine(\"Program End\");"));
 
