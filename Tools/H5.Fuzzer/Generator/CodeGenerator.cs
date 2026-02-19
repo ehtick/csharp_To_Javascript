@@ -39,9 +39,16 @@ namespace H5.Fuzzer.Generator
             // Generate Main Program
             var mainMethod = GenerateMainMethod();
 
+            var depthField = FieldDeclaration(
+                VariableDeclaration(PredefinedType(Token(SyntaxKind.IntKeyword)))
+                .WithVariables(SingletonSeparatedList(
+                    VariableDeclarator(Identifier("__depth"))
+                    .WithInitializer(EqualsValueClause(LiteralExpression(SyntaxKind.NumericLiteralExpression, Literal(0)))))))
+                .WithModifiers(TokenList(Token(SyntaxKind.PublicKeyword), Token(SyntaxKind.StaticKeyword)));
+
             var programClass = ClassDeclaration("Program")
                 .WithModifiers(TokenList(Token(SyntaxKind.PublicKeyword)))
-                .AddMembers(mainMethod);
+                .AddMembers(depthField, mainMethod);
 
             members.Add(programClass);
 
