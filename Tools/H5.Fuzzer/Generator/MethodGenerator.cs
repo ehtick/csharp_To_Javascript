@@ -74,6 +74,33 @@ namespace H5.Fuzzer.Generator
                 }
 
                 body = Block(_statements.GenerateStatements(5, 0, bodyReturnType, initialScope, methodDef.IsAsync, methodDef.Name));
+
+                // Add depth protection
+                var returnStatement = GenerateDefaultReturn(returnType, methodDef.IsAsync);
+
+                var checkDepth = IfStatement(
+                    BinaryExpression(
+                        SyntaxKind.GreaterThanExpression,
+                        MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, IdentifierName("Program"), IdentifierName("__depth")),
+                        LiteralExpression(SyntaxKind.NumericLiteralExpression, Literal(50))),
+                    returnStatement);
+
+                var increment = ExpressionStatement(
+                    PostfixUnaryExpression(
+                        SyntaxKind.PostIncrementExpression,
+                        MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, IdentifierName("Program"), IdentifierName("__depth"))));
+
+                var decrement = ExpressionStatement(
+                    PostfixUnaryExpression(
+                        SyntaxKind.PostDecrementExpression,
+                        MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, IdentifierName("Program"), IdentifierName("__depth"))));
+
+                var tryFinally = TryStatement(
+                    body,
+                    List<CatchClauseSyntax>(),
+                    FinallyClause(Block(decrement)));
+
+                body = Block(checkDepth, increment, tryFinally);
             }
 
             var methodDecl = MethodDeclaration(returnType, methodDef.Name)
@@ -95,6 +122,69 @@ namespace H5.Fuzzer.Generator
             }
 
             return methodDecl;
+        }
+
+        private StatementSyntax GenerateDefaultReturn(TypeSyntax returnType, bool isAsync)
+        {
+            if (isAsync)
+            {
+                // In async method, return logic:
+                // If return type is Task (void-like), simply return;
+                // If return type is Task<T>, return default(T);
+                if (AreTypesEquivalent(returnType, ParseTypeName("System.Threading.Tasks.Task")) ||
+                    AreTypesEquivalent(returnType, IdentifierName("Task")))
+                {
+                    return ReturnStatement();
+                }
+
+                // Try to extract T from Task<T>
+                var innerType = _types.GetUnwrappedTaskType(returnType);
+                if (AreTypesEquivalent(innerType, PredefinedType(Token(SyntaxKind.VoidKeyword))))
+                {
+                    // If extraction failed or it's void task
+                    return ReturnStatement();
+                }
+
+                return ReturnStatement(DefaultExpression(innerType));
+            }
+            else
+            {
+                if (AreTypesEquivalent(returnType, PredefinedType(Token(SyntaxKind.VoidKeyword))))
+                {
+                    return ReturnStatement();
+                }
+
+                // If sync method returning Task, return Task.CompletedTask or FromResult
+                if (_types.IsTask(returnType))
+                {
+                    var innerType = _types.GetUnwrappedTaskType(returnType);
+                     if (AreTypesEquivalent(innerType, PredefinedType(Token(SyntaxKind.VoidKeyword))))
+                     {
+                         return ReturnStatement(
+                             MemberAccessExpression(
+                                 SyntaxKind.SimpleMemberAccessExpression,
+                                 ParseTypeName("System.Threading.Tasks.Task"),
+                                 IdentifierName("CompletedTask")));
+                     }
+                     else
+                     {
+                         return ReturnStatement(
+                             InvocationExpression(
+                                 MemberAccessExpression(
+                                     SyntaxKind.SimpleMemberAccessExpression,
+                                     ParseTypeName("System.Threading.Tasks.Task"),
+                                     IdentifierName("FromResult")))
+                                 .WithArgumentList(ArgumentList(SingletonSeparatedList(Argument(DefaultExpression(innerType))))));
+                     }
+                }
+
+                return ReturnStatement(DefaultExpression(returnType));
+            }
+        }
+
+        private bool AreTypesEquivalent(TypeSyntax t1, TypeSyntax t2)
+        {
+             return SyntaxFactory.AreEquivalent(t1, t2);
         }
 
         // Keep this for backward compatibility or simple tests if needed, but updated to use new logic
