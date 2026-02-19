@@ -64,14 +64,30 @@ namespace H5.Fuzzer.Generator
                 parent.NestedTypes.Add(child);
             }
 
-            // Pass 3: Populate details
+            // Pass 3: Assign Hierarchy for Interfaces
             for (int i = 0; i < AllTypes.Count; i++)
             {
-                PopulateType(AllTypes[i], i);
+                if (AllTypes[i].Kind == TypeKind.Interface)
+                    AssignHierarchy(AllTypes[i], i);
             }
+
+            // Pass 4: Generate Members for Interfaces
+            foreach (var t in AllTypes.Where(t => t.Kind == TypeKind.Interface))
+                GenerateMembers(t, AllTypes.IndexOf(t));
+
+            // Pass 5: Assign Hierarchy for Classes/Structs
+            for (int i = 0; i < AllTypes.Count; i++)
+            {
+                if (AllTypes[i].Kind != TypeKind.Interface)
+                    AssignHierarchy(AllTypes[i], i);
+            }
+
+            // Pass 6: Generate Members for Classes/Structs
+            foreach (var t in AllTypes.Where(t => t.Kind != TypeKind.Interface))
+                GenerateMembers(t, AllTypes.IndexOf(t));
         }
 
-        private void PopulateType(TypeDefinition typeDef, int index)
+        private void AssignHierarchy(TypeDefinition typeDef, int index)
         {
             // Inheritance
             if (typeDef.Kind == TypeKind.Class)
@@ -136,11 +152,9 @@ namespace H5.Fuzzer.Generator
                 }
             }
 
-            // Members
-            GenerateMembers(typeDef, index);
         }
 
-        private void GenerateMembers(TypeDefinition typeDef, int index)
+        public void GenerateMembers(TypeDefinition typeDef, int index)
         {
             var usedNames = new HashSet<string>();
             var existingMethods = new Dictionary<string, MethodDefinition>();
@@ -343,13 +357,20 @@ namespace H5.Fuzzer.Generator
             return GetRandomPrimitive();
         }
 
-        public TypeSyntax CreateTypeSyntax(TypeDefinition typeDef)
+        public TypeSyntax CreateTypeSyntax(TypeDefinition typeDef, bool useGenericParams = false)
         {
              SimpleNameSyntax local;
              if (typeDef.IsGeneric)
              {
                  var args = new List<TypeSyntax>();
-                 foreach(var p in typeDef.GenericParameters) args.Add(GetRandomPrimitive());
+                 if (useGenericParams)
+                 {
+                     foreach(var p in typeDef.GenericParameters) args.Add(IdentifierName(p));
+                 }
+                 else
+                 {
+                     foreach(var p in typeDef.GenericParameters) args.Add(GetRandomPrimitive());
+                 }
                  local = GenericName(Identifier(typeDef.Name)).WithTypeArgumentList(TypeArgumentList(SeparatedList(args)));
              }
              else
@@ -359,7 +380,7 @@ namespace H5.Fuzzer.Generator
 
              if (typeDef.ParentType != null)
              {
-                 var parentSyntax = CreateTypeSyntax(typeDef.ParentType);
+                 var parentSyntax = CreateTypeSyntax(typeDef.ParentType, useGenericParams);
                  return QualifiedName((NameSyntax)parentSyntax, local);
              }
 
@@ -421,7 +442,7 @@ namespace H5.Fuzzer.Generator
         {
             if (type is GenericNameSyntax gen)
             {
-                if (gen.Identifier.Text == "Task") return gen.TypeArgumentList.Arguments[0];
+                if (gen.Identifier.Text.EndsWith("Task")) return gen.TypeArgumentList.Arguments[0];
             }
             if (type is QualifiedNameSyntax q)
             {
