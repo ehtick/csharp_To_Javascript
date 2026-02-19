@@ -153,9 +153,11 @@ namespace H5.Fuzzer.Generator
                 CollectInterfacesRecursive(iface, allInterfaces);
             }
 
-            // First, implement interface members
-            foreach (var iface in allInterfaces)
+            // First, implement interface members (Skip for Interface types as they inherit members)
+            if (typeDef.Kind != TypeKind.Interface)
             {
+                foreach (var iface in allInterfaces)
+                {
                 foreach (var method in iface.Methods)
                 {
                     bool isExplicit = false;
@@ -228,6 +230,7 @@ namespace H5.Fuzzer.Generator
                     }
                 }
             }
+            } // End if not Interface
 
             int memberCount = _random.Next(1, 5);
             for (int i = 0; i < memberCount; i++)
@@ -410,27 +413,22 @@ namespace H5.Fuzzer.Generator
 
         public bool IsTask(TypeSyntax type)
         {
-            if (type is IdentifierNameSyntax id && id.Identifier.Text == "Task") return true;
-            if (type is GenericNameSyntax gen && gen.Identifier.Text == "Task") return true;
-            if (type is QualifiedNameSyntax q) return IsTask(q.Right);
-            return false;
+            var text = type.ToString();
+            return text == "Task" || text == "System.Threading.Tasks.Task" || text.StartsWith("Task<") || text.StartsWith("System.Threading.Tasks.Task<");
         }
 
         public TypeSyntax GetUnwrappedTaskType(TypeSyntax type)
         {
-             if (type is GenericNameSyntax gen && gen.Identifier.Text == "Task")
+            if (type is GenericNameSyntax gen)
             {
-                return gen.TypeArgumentList.Arguments[0];
-            }
-            if (type is IdentifierNameSyntax id && id.Identifier.Text == "Task")
-            {
-                return PredefinedType(Token(SyntaxKind.VoidKeyword));
+                if (gen.Identifier.Text == "Task") return gen.TypeArgumentList.Arguments[0];
             }
             if (type is QualifiedNameSyntax q)
             {
                 return GetUnwrappedTaskType(q.Right);
             }
-            return type;
+            // Fallback for simple Task
+            return PredefinedType(Token(SyntaxKind.VoidKeyword));
         }
 
         public TypeDefinition GetTypeDefinition(TypeSyntax type)
