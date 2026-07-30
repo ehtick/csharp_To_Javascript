@@ -1,3 +1,9 @@
+> **⚠️ h5 has been replaced by [Transpose](https://github.com/curiosity-ai/transpose).** Transpose is the next generation of h5, rebuilt around Roslyn. New projects should start there.
+>
+> - Repo: https://github.com/curiosity-ai/transpose
+> - Packages: [Transpose.BCL](https://www.nuget.org/packages/Transpose.BCL/) · [Transpose.Core](https://www.nuget.org/packages/Transpose.Core/) · [Transpose.Build.Target](https://www.nuget.org/packages/Transpose.Build.Target/) · [Transpose.Newtonsoft.Json](https://www.nuget.org/packages/Transpose.Newtonsoft.Json/) · [Transpose.Template](https://www.nuget.org/packages/Transpose.Template/) · [Transpose.Compiler.Library](https://www.nuget.org/packages/Transpose.Compiler.Library/) · [tesserae](https://www.nuget.org/packages/tesserae/)
+> - Migration guide: https://github.com/curiosity-ai/transpose/blob/master/MIGRATION.md
+
 #  h5 🚀 - C# to JavaScript compiler
 
 <a href="https://github.com/curiosity-ai/h5"><img src="https://raw.githubusercontent.com/curiosity-ai/h5/master/logo/h5.svg" width="120" height="120" align="right" /></a>
